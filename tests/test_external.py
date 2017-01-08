@@ -6,8 +6,9 @@ Created on Dec 1, 2016
 from smc import session
 
 import unittest
-import travisdocker
 from smc import session
+from smc.elements.network import Host
+from smc.api.exceptions import ElementNotFound
 
 class Test(unittest.TestCase):
        
@@ -20,7 +21,11 @@ class Test(unittest.TestCase):
     def tearDown(self):
         print("-------Called tear down-------")
         session.logout()
-
+    
+    def test_connect(self):
+        host = Host('blah')
+        self.assertRaises(ElementNotFound, lambda: host.href)
+        
 
 if __name__ == "__main__":
     #import sys;sys.argv = ['', 'Test.testName']
