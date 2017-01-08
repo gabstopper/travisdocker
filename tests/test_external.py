@@ -5,28 +5,18 @@ Created on Dec 1, 2016
 '''
 from smc import session
 
-import time
-import socket
 import unittest
+from constants import url, api_key, verify
 from smc import session
 from smc.elements.network import Host
 from smc.api.exceptions import ElementNotFound, SMCConnectionError
 
 class Test(unittest.TestCase):
        
-    print("Running Search Test..")
-    print("Hostname: %s" % socket.gethostbyname(socket.gethostname()))
     def setUp(self):
         print("-------Called setup-------")
-        for _ in range (1, 5):
-            try:
-                session.login(url='http://127.0.0.1:8082', api_key='kKphtsbQKjjfHR7amodA0001', timeout=30)
-                break
-            except SMCConnectionError as e:
-                print("Timed out, pausing then will try again: %s" % e)
-                time.sleep(5)
-        print("Dropped out bottom")
-    
+        session.login(url=url, api_key=api_key, verify=verify)
+       
     def tearDown(self):
         print("-------Called tear down-------")
         session.logout()
