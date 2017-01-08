@@ -14,10 +14,9 @@ from smc.api.exceptions import ElementNotFound
 class Test(unittest.TestCase):
        
     print("Running Search Test..")
-    time.sleep(5)
     def setUp(self):
         print("-------Called setup-------")
-        session.login(url='http://127.0.0.1:8082', api_key='kKphtsbQKjjfHR7amodA0001', timeout=90)
+        session.login(url='http://127.0.0.1:8082', api_key='123kKphtsbQKjjfHR7amodA0001', timeout=90)
         print("Here")
     
     def tearDown(self):
