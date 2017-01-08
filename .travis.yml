@@ -8,6 +8,7 @@ services:
 before_install:
 - docker login -u="$DOCKER_USERNAME" -p="$DOCKER_PASSWORD"
 - docker pull dwlepage70/smc:v6.1.0
+- docker network create --subnet=172.32.0.0/24 mynet
 - docker run -d -p 8902-8918:8902-8918 -p 8082:8082 --network=mynet --ip=172.32.0.10 dwlepage70/smc:v6.1.0
 - docker ps -a
 - docker run dwlepage70/smc6.1.0 /bin/sh -c "/etc/init.d/sgMgtServer start && /etc/init.d/sgLogServer start"
