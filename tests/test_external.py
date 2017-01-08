@@ -6,6 +6,7 @@ Created on Dec 1, 2016
 from smc import session
 
 import unittest
+import travisdocker
 from smc import session
 
 class Test(unittest.TestCase):
