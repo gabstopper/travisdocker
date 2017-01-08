@@ -16,4 +16,4 @@ before_install:
 - pip install coverage
 
 script:
-- nosetests -w smc/tests --with-coverage --cover-package=smc
+- nosetests -w travisdocker/tests --with-coverage
