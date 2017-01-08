@@ -6,6 +6,7 @@ Created on Dec 1, 2016
 from smc import session
 
 import time
+import socket
 import unittest
 from smc import session
 from smc.elements.network import Host
@@ -14,6 +15,7 @@ from smc.api.exceptions import ElementNotFound, SMCConnectionError
 class Test(unittest.TestCase):
        
     print("Running Search Test..")
+    print("Hostname: %s" % socket.gethostbyname(socket.gethostname()))
     def setUp(self):
         print("-------Called setup-------")
         for _ in range (1, 5):
