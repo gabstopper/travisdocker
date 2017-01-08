@@ -16,4 +16,4 @@ before_install:
 - pip install coverage
 
 script:
-- nosetests -v --with-coverage
+- nosetests --exe --with-coverage --verbosity=3
