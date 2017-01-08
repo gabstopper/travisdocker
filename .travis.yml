@@ -16,4 +16,4 @@ before_install:
 - pip install coverage
 
 script:
-- nosetests -v --with-coverage
+- nosetests -w smc/tests --with-coverage --cover-package=smc
