@@ -15,6 +15,10 @@ before_install:
 - docker exec smc_container ifconfig -a
 - docker exec smc_container netstat -na
 - pip install coverage
+- pip install coveralls
 
 script:
 - nosetests --exe --with-coverage --cover-package=smc --verbosity=3
+
+after_success:
+  coveralls
