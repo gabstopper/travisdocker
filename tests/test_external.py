@@ -18,7 +18,7 @@ class Test(unittest.TestCase):
         print("-------Called setup-------")
         for _ in range (1, 5):
             try:
-                session.login(url='http://172.18.1.26:8082', api_key='kKphtsbQKjjfHR7amodA0001', timeout=90)
+                session.login(url='http://127.0.0.1:8082', api_key='kKphtsbQKjjfHR7amodA0001')
                 break
             except SMCConnectionError as e:
                 print("Timed out, pausing then will try again: %s" % e)
