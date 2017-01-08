@@ -12,8 +12,7 @@ before_install:
 - docker run -d -p 8902-8918:8902-8918 -p 8082:8082 --network=mynet --ip=172.32.0.10 dwlepage70/smc:v6.1.0
 - docker ps -a
 - docker run dwlepage70/smc:v6.1.0 /bin/bash -c "/etc/init.d/sgMgtServer start && /etc/init.d/sgLogServer start"
-- pip install codecov
-
+- pip install coverage
 
 script:
 - nosetests -v --with-coverage
