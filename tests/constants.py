@@ -8,3 +8,4 @@ verify='/Users/davidlepage/Downloads/cacert.pem'
 #Version 6.0.2
 #url='http://172.18.1.150:8082'
 #api_key='EiGpKD4QxlLJ25dbBEp20001'
+timeout=30
