@@ -18,7 +18,7 @@ before_install:
 - pip install coveralls
 
 script:
-- nosetests --exe --with-coverage --cover-config-file=.coveragerc --cover-package=smc
+- nosetests --exe --with-coverage --cover-package=smc
 
 after_success:
   coveralls
