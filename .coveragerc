@@ -1,0 +1,15 @@
+[run]
+omit = 
+	__init__.py
+	smc/actions/locators.py
+	smc/actions/parser.py
+	smc/actions/test.py
+	smc/actions/shortcuts.py
+
+[report]
+# Regexes for lines to exclude from consideration
+exclude_lines =
+
+    # Don't complain about missing debug-only code:
+    def __repr__
+    pass

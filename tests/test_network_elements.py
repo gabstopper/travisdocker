@@ -403,8 +403,8 @@ class Test(unittest.TestCase):
         self.assertEqual(service.get_attr_by_name('max_dst_port'), 5005)
         self.assertEqual(service.delete().code, 204)
     
-        result = TCPService('HTTP')
-        self.assertIsInstance(result.protocol_agent, Protocol)
+        #result = TCPService('HTTP')
+        #self.assertIsInstance(result.protocol_agent, Protocol)
     
     #@unittest.skip("good")
     def testUDPService(self):
