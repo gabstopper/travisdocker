@@ -1,7 +1,6 @@
 [run]
 omit = 
 	__init__.py
-	/home/travis/virtualenv/python2.7.12/src/smc-python/smc/core/node*
 
 [report]
 omit =
