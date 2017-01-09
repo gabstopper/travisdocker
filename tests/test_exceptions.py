@@ -4,7 +4,7 @@ Created on Sep 30, 2016
 @author: davidlepage
 '''
 import unittest
-from .constants import url, api_key, verify
+from constants import url, api_key, verify
 from smc.api.exceptions import SMCOperationFailure
 from smc import session
 

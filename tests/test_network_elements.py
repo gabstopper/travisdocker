@@ -1,5 +1,5 @@
 import unittest
-from .constants import url, api_key, verify
+from constants import url, api_key, verify
 from smc import session
 import smc.actions.search as search
 from smc.elements.network import Zone, DomainName, IPList, Host, AddressRange, Router,\

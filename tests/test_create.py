@@ -4,7 +4,7 @@ Created on Jun 25, 2016
 @author: davidlepage
 '''
 import unittest
-from .constants import url, api_key, verify
+from constants import url, api_key, verify, timeout
 from smc import session
 from smc.elements.helpers import zone_helper, logical_intf_helper,\
     location_helper
@@ -20,7 +20,7 @@ class Test(unittest.TestCase):
     tmp = {}
     def setUp(self):
         session.login(url=url, api_key=api_key, verify=verify,
-                      timeout=40)
+                      timeout=timeout)
         
     def tearDown(self):
         try:

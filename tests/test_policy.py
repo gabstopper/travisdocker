@@ -5,7 +5,7 @@ Created on Oct 20, 2016
 '''
 import time
 import unittest
-from .constants import url, api_key, verify
+from constants import url, api_key, verify
 from smc import session
 from smc.policy.layer3 import FirewallPolicy, FirewallTemplatePolicy
 from smc.api.exceptions import LoadPolicyFailed, MissingRequiredInput,\
@@ -31,7 +31,6 @@ class Test(unittest.TestCase):
         try:
             session.logout()
         except SystemExit:
-            print("SYSTEM EXIT thrown")
             pass
 
 

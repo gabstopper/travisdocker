@@ -5,7 +5,7 @@ Created on Oct 30, 2016
 '''
 import unittest
 from smc import session
-from .constants import url, api_key, verify
+from constants import url, api_key, verify
 from smc.routing.access_list import IPAccessList, IPv6AccessList
 from smc.routing.prefix_list import IPPrefixList, IPv6PrefixList
 from smc.api.common import SMCRequest

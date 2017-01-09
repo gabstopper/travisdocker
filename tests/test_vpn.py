@@ -4,7 +4,7 @@ Created on Oct 2, 2016
 @author: davidlepage
 '''
 import unittest
-from .constants import url, api_key, verify
+from constants import url, api_key, verify
 from smc import session
 from smc.vpn.policy import VPNPolicy, CentralGatewayNode, SatelliteGatewayNode
 from smc.vpn.elements import ExternalGateway

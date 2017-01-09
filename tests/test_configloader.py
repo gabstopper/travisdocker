@@ -6,7 +6,7 @@ Created on Nov 11, 2016
 import unittest
 import os
 import tempfile
-from .constants import url, api_key, verify
+from constants import url, api_key, verify
 from smc.compat import PY3
 from smc import session
 from smc.api.configloader import load_from_file

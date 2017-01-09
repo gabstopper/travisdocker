@@ -6,7 +6,7 @@ Created on Aug 24, 2016
 
 import unittest
 import inspect
-from .constants import url, api_key, verify
+from constants import url, api_key, verify
 from smc import session
 import smc.elements.collection
 from smc.elements.network import Host
@@ -18,7 +18,6 @@ class Test(unittest.TestCase):
 
     tmp = {}
     def setUp(self):
-        #session.login(url='http://172.18.1.150:8082', api_key='EiGpKD4QxlLJ25dbBEp20001')
         session.login(url=url, api_key=api_key, timeout=45, verify=verify)
     def tearDown(self):
         try:
