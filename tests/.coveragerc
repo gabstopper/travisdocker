@@ -1,11 +1,11 @@
 [run]
 omit = 
 	__init__.py
-	*node*
+	/home/travis/virtualenv/python2.7.12/src/smc-python/smc/core/node*
 
 [report]
 omit =
-	*node*
+	/home/travis/virtualenv/python2.7.12/src/smc-python/smc/core/node*
 # Regexes for lines to exclude from consideration
 exclude_lines =
 
