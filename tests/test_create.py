@@ -103,9 +103,9 @@ class Test(unittest.TestCase):
                                        zone_ref_intf2=zone_helper('DMZ'))
         self.assertTrue(r.href.startswith('http'))
         
-        r = engine.physical_interface.add_vlan_to_inline_interface('7-8', vlan_id=100, vlan_id2=101,
-                                                                   logical_interface_ref=logical_intf_helper('default_eth'))
-        self.assertTrue(r.href.startswith('http'))
+        #r = engine.physical_interface.add_vlan_to_inline_interface('7-8', vlan_id=100, vlan_id2=101,
+        #                                                           logical_interface_ref=logical_intf_helper('default_eth'))
+        #self.assertTrue(r.href.startswith('http'))
         
         SMCRequest(href=engine.href).delete()
     
