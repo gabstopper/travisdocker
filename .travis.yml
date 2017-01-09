@@ -1,6 +1,10 @@
 sudo: false
 
 language: python
+python:
+  - "2.7"
+  - "3.4"
+  - "3.5"
 
 services:
   - docker
@@ -10,15 +14,15 @@ before_install:
 - docker pull dwlepage70/smc:v6.1.0
 - docker network create --subnet=172.32.0.0/24 mynet
 - docker run -d -p 8902-8918:8902-8918 -p 8082:8082 --network=mynet --ip=172.32.0.10 --name smc_container dwlepage70/smc:v6.1.0
-- docker exec smc_container /bin/bash -c "/etc/init.d/sgMgtServer start >/dev/null 2>&1"
-- docker exec smc_container /bin/bash -c "/etc/init.d/sgLogServer start >/dev/null 2>&1"
+- docker exec smc_container /bin/bash -c "/etc/init.d/sgMgtServer start"
+- docker exec smc_container /bin/bash -c "/etc/init.d/sgLogServer start"
 - docker exec smc_container ifconfig -a
 - docker exec smc_container netstat -na
 - pip install coverage
 - pip install coveralls
 
 script:
-- nosetests --exe --with-coverage --cover-package=smc --verbosity=3
+- nosetests --exe --with-coverage --cover-package=smc
 
 after_success:
   coveralls
