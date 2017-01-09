@@ -73,7 +73,7 @@ class WebApiTest(unittest.TestCase):
         self.assertEqual(logging.INFO, logger.getEffectiveLevel())
         
     def test_bad_method(self):
-        from .constants import url, api_key
+        from constants import url, api_key
         from smc import session
         session.login(url=url, api_key=api_key)
         class Mock: pass
