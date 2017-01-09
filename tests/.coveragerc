@@ -4,6 +4,8 @@ omit =
 	smc/core/node.py
 
 [report]
+omit =
+	*node*
 # Regexes for lines to exclude from consideration
 exclude_lines =
 
