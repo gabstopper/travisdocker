@@ -5,9 +5,11 @@ omit =
 	smc/actions/parser.py
 	smc/actions/test.py
 	smc/actions/shortcuts.py
-        smc-python/smc/core/node*
+        tests/test_nodes.py
 
 [report]
+omit =
+	tests/test_nodes.py
 # Regexes for lines to exclude from consideration
 exclude_lines =
 
