@@ -1,15 +1,10 @@
 [run]
 omit = 
 	__init__.py
-	smc/actions/locators.py
-	smc/actions/parser.py
-	smc/actions/test.py
-	smc/actions/shortcuts.py
-        smc/core/node.py
 
 [report]
-omit = 
-	smc/core/node.py
+omit =
+	smc-python/smc/core/node*
 # Regexes for lines to exclude from consideration
 exclude_lines =
 
