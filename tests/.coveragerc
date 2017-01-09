@@ -8,7 +8,8 @@ omit =
         smc/core/node.py
 
 [report]
-omit = smc/core/node.py
+omit = 
+	smc/core/node.py
 # Regexes for lines to exclude from consideration
 exclude_lines =
 
