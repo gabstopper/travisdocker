@@ -2,12 +2,8 @@
 omit = 
 	__init__.py
 	actions/shortcuts.py
-        core/node.py
 
 [report]
-omit = 
-	core/node.py
-
 # Regexes for lines to exclude from consideration
 exclude_lines =
 
