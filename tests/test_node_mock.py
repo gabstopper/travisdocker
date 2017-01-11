@@ -76,6 +76,22 @@ class HttpMocks(unittest.TestCase):
     def tearDown(self):
         mysession.logout()
     
+    def test_node_create(self, m):
+        node = Node.create('mynode', 'virtual_fw_node')
+        data = node.get('virtual_fw_node')
+        self.assertEqual(data.get('name'), 'mynode node 1')
+        self.assertEqual(data.get('nodeid'), 1)
+    
+    def test_node_using_meta(self, m):
+        uri = 'node'
+        node = Node(meta=Meta(href='{}/{}'.format(url, uri), type='virtual', name='mynode'))
+        self.assertEqual(node.name, 'mynode')
+        self.assertEqual(node.type, 'virtual')
+        register_request(m, uri, 
+                         status_code=200, 
+                         json={'nodeid': 1})
+        self.assertEqual(node.nodeid, 1)
+       
     def test_fetch_license_fail(self, m):
         uri = 'fetch'
         
@@ -344,6 +360,15 @@ class HttpMocks(unittest.TestCase):
         self.assertIsInstance(diagnostics, list)
         for diag in diagnostics:
             self.assertIsInstance(diag, Diagnostic)
+            
+        # Check methods in diagnostics class
+        diagnostic = diagnostics[0]
+        self.assertEqual(diagnostic.name, 'SNMP Monitoring')
+        self.assertTrue(diagnostic.state == False)
+        diagnostic.enable()
+        self.assertTrue(diagnostic.state == True)
+        diagnostic.disable()
+        self.assertTrue(diagnostic.state == False)
     
     def test_send_diagnostic_fail(self, m):
         uri = 'send_diagnostic'
@@ -392,13 +417,13 @@ class HttpMocks(unittest.TestCase):
         uri = 'ssh'
         register_request(m, uri,
                          json={'link':[
-                                           {
-                                            'href': '{}/{}'.format(url, uri),
-                                            'method': 'POST',
-                                            'rel': 'foo'
-                                            }
-                                           ]
-                                   })
+                                        {
+                                         'href': '{}/{}'.format(url, uri),
+                                         'method': 'POST',
+                                         'rel': 'foo'
+                                        }
+                                       ]
+                                })
         node = Node(meta=Meta(href='{}/{}'.format(url, uri)))
         self.assertRaises(NodeCommandFailed, lambda: node.ssh())
         
@@ -451,13 +476,13 @@ class HttpMocks(unittest.TestCase):
         uri = 'time_sync'
         register_request(m, uri,
                          json={'link':[
-                                           {
-                                            'href': '{}/{}'.format(url, uri),
-                                            'method': 'POST',
-                                            'rel': 'foo'
-                                            }
-                                           ]
-                                   })
+                                        {
+                                         'href': '{}/{}'.format(url, uri),
+                                         'method': 'POST',
+                                         'rel': 'foo'
+                                        }
+                                       ]
+                               })
         node = Node(meta=Meta(href='{}/{}'.format(url, uri)))
         self.assertRaises(NodeCommandFailed, lambda: node.time_sync())
     
@@ -497,4 +522,3 @@ class HttpMocks(unittest.TestCase):
         node = Node(meta=Meta(href='{}/{}'.format(url, uri)))
         result = node.certificate_info()
         self.assertDictEqual(result, cert)
-  
