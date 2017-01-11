@@ -5,14 +5,12 @@ omit =
 	smc/actions/parser.py
 	smc/actions/test.py
 	smc/actions/shortcuts.py
-        tests/test_nodes.py
 
 [report]
-omit =
-	tests/test_nodes.py
 # Regexes for lines to exclude from consideration
 exclude_lines =
 
     # Don't complain about missing debug-only code:
     def __repr__
     pass
+	
