@@ -17,7 +17,7 @@ from smc.core.node import NodeStatus, ApplianceStatus
 from smc.actions.search import element_by_href_as_json
 from smc.api.common import SMCRequest
 from smc.core.engines import Layer3Firewall
-from smc.tests.constants import url, api_key
+from constants import url, api_key
 
 
 # !! This requires a validly deployed firewall to test as it will test options within the node and 
