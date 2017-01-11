@@ -16,8 +16,17 @@ from smc.elements.network import Host
 from smc.elements.other import prepare_contact_address
 from smc.core.interfaces import PhysicalInterface, Interface
 
+
+def setup_module(module):
+    print ("") # this is to get a newline after the dots
+    print ("setup_module before anything in this file")
+ 
+def teardown_module(module):
+    print ("teardown_module after everything in this file")
+        
 class Test(unittest.TestCase):
     tmp = {}
+    
     def setUp(self):
         session.login(url=url, api_key=api_key, verify=verify,
                       timeout=timeout)
