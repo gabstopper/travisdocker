@@ -1,6 +1,7 @@
 [run]
 omit = 
 	__init__.py
+	smc/base/mixins.py
 	smc/actions/locators.py
 	smc/actions/parser.py
 	smc/actions/test.py

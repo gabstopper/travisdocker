@@ -19,7 +19,7 @@ before_install:
 - pip install requests-mock
 
 script:
-- nosetests --exe --with-coverage --cover-package=smc --cover-erase --cover-html -v
+- nosetests --exe --with-coverage --cover-package=smc --cover-html -v
 
 after_success:
-  coveralls debug
+  coveralls
