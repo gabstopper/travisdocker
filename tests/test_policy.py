@@ -10,17 +10,18 @@ from smc import session
 from smc.policy.layer3 import FirewallPolicy, FirewallTemplatePolicy
 from smc.api.exceptions import LoadPolicyFailed, MissingRequiredInput,\
     TaskRunFailed, CreatePolicyFailed
-from smc.policy.rule import IPv4Rule, IPv4Layer2Rule, EthernetRule
+from smc.policy.rule import IPv4Rule, IPv4Layer2Rule, EthernetRule, IPv4NATRule
 from smc.vpn.policy import VPNPolicy
 from smc.policy.layer2 import Layer2Policy
 from smc.api.common import SMCRequest
 from smc.elements.other import LogicalInterface
 from smc.policy.ips import IPSPolicy
 from smc.elements.collection import describe_tcp_service,\
-    describe_file_filtering_policy
+    describe_file_filtering_policy, describe_alias
 from smc.core.engines import Layer3Firewall
 from smc.administration.tasks import task_history, task_status
 from smc.policy.file_filtering import FileFilteringRule
+from smc.elements.service import TCPService
 
 class Test(unittest.TestCase):
 
@@ -31,8 +32,8 @@ class Test(unittest.TestCase):
         try:
             session.logout()
         except SystemExit:
+            print("SYSTEM EXIT thrown")
             pass
-
 
     def test_FW_bad_template_Policy(self):
         self.assertRaises(LoadPolicyFailed, lambda: FirewallPolicy.create(name='myfw', template='foo'))
@@ -138,9 +139,14 @@ class Test(unittest.TestCase):
         rule = policy.layer2_ipv4_access_rules.create(name='myrule', sources='any', action='duh')
         self.assertEqual(201, rule.code)
         
-        # Rule with non-existant logical interface
-        self.assertRaises(MissingRequiredInput, lambda: policy.layer2_ipv4_access_rules.create(name='myrule', logical_interfaces=['foo']))
+        # Search should return right object time
+        rules = policy.search_rule('myrule')
+        self.assertIsInstance(rules, list)
+        self.assertIsInstance(rules[0], IPv4Layer2Rule)
         
+        # Rule with non-existant logical interface
+        self.assertRaises(MissingRequiredInput, lambda: policy.layer2_ipv4_access_rules.create(name='myrule', 
+                                                                                               logical_interfaces=['foo']))
         self.assertEqual(204, policy.delete().code)
         
     def test_L2FW_validate_fw_ethernet_rule_creation(self):
@@ -189,6 +195,12 @@ class Test(unittest.TestCase):
         self.assertIsInstance(policy, IPSPolicy)
         rule = policy.ips_ipv4_access_rules.create(name='myrule', sources='any')
         self.assertEqual(201, rule.code)
+        
+        # Search back the rule, should be list and IPv4Layer2Rule
+        rules = policy.search_rule('myrule')
+        self.assertIsInstance(rules, list)
+        self.assertIsInstance(rules[0], IPv4Layer2Rule)
+        
         for rule in policy.ips_ipv4_access_rules.all():
             self.assertIsInstance(rule, IPv4Layer2Rule)
             self.assertEqual(rule.name, 'myrule')
@@ -226,6 +238,12 @@ class Test(unittest.TestCase):
                                                 services='any',
                                                 logical_interfaces=['logical_foo'])
         self.assertEqual(201, rule.code, rule.msg)
+        
+        # Search policy for this rule, should return Ethernet Rule
+        rule = policy.search_rule('myethernetrule')
+        self.assertIsInstance(rule, list)
+        self.assertIsInstance(rule[0], EthernetRule)
+        
         for rule in policy.ips_ethernet_rules.all():
             self.assertIsInstance(rule, EthernetRule)
             self.assertEqual(rule.name, 'myethernetrule')
@@ -283,6 +301,34 @@ class Test(unittest.TestCase):
                                             destinations='any', 
                                             services='any')
         self.assertIn(r.code, [200,201])
+    
+        TCPService.create('ssh2222', 2222)
+        service = TCPService('ssh2222')
+        engine = Layer3Firewall.create(name='myfoobar', 
+                                       mgmt_ip='1.1.1.1', 
+                                       mgmt_network='1.1.1.0/24')
+        alias = describe_alias(name='$$ Interface ID 0.ip')
+        r = policy.fw_ipv4_nat_rules.create(name='portredirect', 
+                                             sources='any', 
+                                             destinations=[alias[0].href], 
+                                             services=[service.href], 
+                                             static_dst_nat={'original_value': {
+                                                                        'max_port':2222,
+                                                                        'min_port':2222},
+                                                             'translated_value': {
+                                                                        'ip_descriptor': '3.3.3.3',
+                                                                        'max_port':22,
+                                                                        'min_port':22}}, 
+                                               used_on=engine.href)
+        self.assertTrue(r.href.startswith('http'))
+        self.assertTrue(SMCRequest(href=r.href).delete().code, 204)
+        self.assertTrue(engine.delete().code, 204)
+        
+        rule_matches = policy.search_rule('nonatrule')
+        self.assertIsInstance(rule_matches[0], IPv4NATRule)
+        
+        no_rule_match = policy.search_rule('blahblahfoo')
+        self.assertTrue(len(no_rule_match) == 0)
         
         # Static source NAT, this is broken in SMC 6.1.1 #TODO:
         r = policy.fw_ipv4_nat_rules.create(name='srcdstnat', 
@@ -328,8 +374,7 @@ class Test(unittest.TestCase):
             
         self.assertEqual(engine.delete().code, 204)
         self.assertEqual(policy.delete().code, 204)
-    
-    @unittest.skip("tmp")     
+        
     def test_file_filtering_policy(self):
         # Not fully implemented
         policy = describe_file_filtering_policy()

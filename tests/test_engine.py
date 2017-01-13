@@ -20,6 +20,7 @@ from smc.api.exceptions import UnsupportedEngineFeature
 from smc.vpn.elements import VPNCertificate
 from smc.elements.other import prepare_contact_address
 
+
 class Test(unittest.TestCase):
     def setUp(self):
         session.login(url=url, api_key=api_key, verify=verify,
@@ -111,6 +112,11 @@ class Test(unittest.TestCase):
         aliases = engine.alias_resolving()
         for alias in aliases:
             self.assertIsInstance(alias, Alias)
+            self.assertIsNotNone(alias.name)
+            self.assertTrue(alias.href.startswith('http'))
+            self.assertIsInstance(alias.resolved_value, list)
+            # This currently just returns the aliases resolve href - doesn't work as of SMC 6.1.1
+            self.assertTrue(alias.resolve())
             
         # Blacklist, will fail as engine is not live or connected to SMC
         self.assertRaises(EngineCommandFailed, lambda: engine.blacklist('1.1.1.1/32', '0.0.0.0/0'))
