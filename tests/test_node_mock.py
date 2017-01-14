@@ -13,10 +13,9 @@ def register_request(adapter, uri,
                      method='GET',
                      headers={'content-type': 'application/json'}):
     """
-    URI should be the 'rel' link for the resource. The expected json returned
-    will be the 'link' resource with the follow on href. This href will match 
-    the mock address to intercept.
-    Json is the payload returned when the URI mapping matches
+    Simple GET request mock. URI should be the 'rel' link for the
+    resource under test. Check the method being tested for the rel
+    name when find_link_by_name is called.
     """
     # JSON is returned when URI is matched
     json = {'link':[
@@ -39,8 +38,14 @@ def register_get_and_reply(adapter, uri,
                            reply_text=None, # return response.content
                            reply_method='POST',
                            reply_headers={'content-type': 'application/json'}):
-    
-    # First GET is to return the LINK of the resource URI
+    """
+    Registers the first GET request that will use find_link_by_name
+    to retrieve the HREF of the resource. The json returned is the uri 
+    provided. 
+    The reply method should match the signature of the next function call 
+    in the tested method. Most methods involve a GET to find the resource, 
+    followed by a GET/PUT/POST to get the resource.
+    """
     # Note: href is modified so method response goes to different bound URL
     uri_reply = '{}_reply'.format(uri)  
     adapter.register_uri('GET', '/{}'.format(uri),
@@ -55,7 +60,7 @@ def register_get_and_reply(adapter, uri,
                          status_code=200,
                          headers={'content-type': 'application/json'})
     # Register the URI for the reply to above GET
-    # Other attributes are included in the POST/PUT reply
+    # Other attributes are included in the POST/PUT/GET reply
     json = reply_json if reply_json is not None else {}
     if reply_text is not None:
         json = None
@@ -68,7 +73,7 @@ def register_get_and_reply(adapter, uri,
     
          
 @requests_mock.Mocker()
-class HttpMocks(unittest.TestCase):
+class NodeMocks(unittest.TestCase):
     
     def setUp(self):
         mysession.login(url, api_key)
@@ -110,7 +115,6 @@ class HttpMocks(unittest.TestCase):
 
         node = Node(meta=Meta(href='{}/{}'.format(url, uri)))
         self.assertIsNone(node.fetch_license())
-    
      
     def test_bind_license_pass(self, m):
         uri = 'bind'
@@ -251,8 +255,10 @@ class HttpMocks(unittest.TestCase):
                                reply_method='GET')
 
         node = Node(meta=Meta(href='{}/{}'.format(url, uri)))
-        self.assertIsInstance(node.status(), NodeStatus)
-        self.assertDictEqual(status, vars(node.status()))   
+        node_dict = node.status()
+        self.assertIsInstance(node_dict, NodeStatus)
+        self.assertDictEqual(status, vars(node.status()))
+        self.assertIsNone(node_dict.foo) #Attribute doesn't exist 
     
     def test_status_fail(self, m):
         uri = 'status'
@@ -297,13 +303,13 @@ class HttpMocks(unittest.TestCase):
         uri = 'reset_user_db'
         register_request(m, uri,
                          json={'link':[
-                                           {
-                                            'href': '{}/{}'.format(url, uri),
-                                            'method': 'POST',
-                                            'rel': 'foo'
-                                            }
-                                           ]
-                                   })
+                                        {
+                                         'href': '{}/{}'.format(url, uri),
+                                         'method': 'POST',
+                                         'rel': 'foo'
+                                        }
+                                       ]
+                               })
         node = Node(meta=Meta(href='{}/{}'.format(url, uri)))
         self.assertRaises(NodeCommandFailed, lambda: node.reset_user_db())
        
@@ -332,13 +338,13 @@ class HttpMocks(unittest.TestCase):
         uri = 'diagnostic'
         register_request(m, uri,
                          json={'link':[
-                                           {
-                                            'href': '{}/{}'.format(url, uri),
-                                            'method': 'POST',
-                                            'rel': 'foo'
-                                            }
-                                           ]
-                                   })
+                                        {
+                                         'href': '{}/{}'.format(url, uri),
+                                         'method': 'POST',
+                                         'rel': 'foo'
+                                        }
+                                       ]
+                               })
         node = Node(meta=Meta(href='{}/{}'.format(url, uri)))
         self.assertRaises(NodeCommandFailed, lambda: node.diagnostic())
     
