@@ -39,7 +39,7 @@ class TestConfigloader(unittest.TestCase):
         mock_open.return_value = io.StringIO(u'{}'.format(cfg))
         self.assertRaises(ConfigLoadError, lambda: load_from_file())
     
-    @mock.patch('smc.api.configloader.io.open', create=True)    
+    @mock.patch('smc.api.configloader.io.open', create=True)
     def test_missing_credential_file_in_home_directory(self, mock_open):
         """
         Raises IOError because ~/.smcrc not found and alt_filepath not
@@ -49,7 +49,7 @@ class TestConfigloader(unittest.TestCase):
         self.assertRaises(ConfigLoadError, lambda: load_from_file())
     
     @mock.patch('smc.api.configloader.load_from_file')
-    @mock.patch('smc.api.configloader.io.open', create=True)    
+    @mock.patch('smc.api.configloader.io.open', create=True)
     def test_called_with_alt_file(self, mock_open, mock_load):
         cfg = ("[smc]\n"
                "smc_address=1.1.1.1\n"
@@ -59,7 +59,7 @@ class TestConfigloader(unittest.TestCase):
         load_from_file(alt_filepath='/Users/myfile')
         mock_open.assert_called_once_with('/Users/myfile', 'rt', encoding='UTF-8')
     
-    @mock.patch('smc.api.configloader.io.open', create=True) 
+    @mock.patch('smc.api.configloader.io.open', create=True)
     def test_bogus_entries_are_ignored(self, mock_open):
         cfg = ("[smc]\n"
                "smc_address=1.1.1.1\n"
@@ -74,7 +74,7 @@ class TestConfigloader(unittest.TestCase):
         self.assertNotIn('foo', login_dict)
         self.assertNotIn('bar', login_dict)
     
-    @mock.patch('smc.api.configloader.io.open', create=True) 
+    @mock.patch('smc.api.configloader.io.open', create=True)
     def test_ssl_enabled_settings(self, mock_open):
         """
         SSL specified, but verify disabled
@@ -87,7 +87,7 @@ class TestConfigloader(unittest.TestCase):
         login_dict = load_from_file()
         self.assertTrue(login_dict.get('verify') == False)
     
-    @mock.patch('smc.api.configloader.io.open', create=True) 
+    @mock.patch('smc.api.configloader.io.open', create=True)
     def test_ssl_with_no_cert_file_and_ssl_enabled(self, mock_open):
         """
         SSL specified, verify enabled, not cert to verify against,
@@ -135,7 +135,7 @@ class TestConfigloader(unittest.TestCase):
         self.assertEqual(login_dict.get('timeout'), 60)
         self.assertEqual(login_dict.get('api_version'), 6.1)
     
-    @mock.patch('smc.api.configloader.io.open', create=True)    
+    @mock.patch('smc.api.configloader.io.open', create=True)
     def test_invalid_timeout_and_api_version(self, mock_open):
         """
         If invalid timeout setting provided, i.e. 10a, 20b, etc,
@@ -151,7 +151,7 @@ class TestConfigloader(unittest.TestCase):
         self.assertIsNone(login_dict.get('timeout'))
         self.assertIsNone(login_dict.get('api_version'))
     
-    @mock.patch('smc.api.configloader.io.open', create=True) 
+    @mock.patch('smc.api.configloader.io.open', create=True)
     def test_session_login_fail(self, mock_open):
         """
         Session login is called via session.login() or 

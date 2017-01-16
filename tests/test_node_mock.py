@@ -1,85 +1,29 @@
 import unittest
-from smc import session as mysession
+import requests
 import requests_mock
+from smc import session as mysession
 from smc.api.exceptions import LicenseError, NodeCommandFailed
 from smc.core.node import Node, ApplianceStatus, NodeStatus, Diagnostic
-from constants import url, api_key
+from .constants import url, register_get_and_reply, register_request
 from smc.base.model import Meta
-
-
-def register_request(adapter, uri, 
-                     status_code=200,
-                     json=None, 
-                     method='GET',
-                     headers={'content-type': 'application/json'}):
-    """
-    Simple GET request mock. URI should be the 'rel' link for the
-    resource under test. Check the method being tested for the rel
-    name when find_link_by_name is called.
-    """
-    # JSON is returned when URI is matched
-    json = {'link':[
-                    {
-                     'href': '{}/{}'.format(url, uri),
-                     'method': 'POST',
-                     'rel': uri
-                     }
-                    ]
-            } if json is None else json
-    
-    adapter.register_uri(method, '/{}'.format(uri),
-                         json=json,
-                         status_code=status_code,
-                         headers=headers)
-
-def register_get_and_reply(adapter, uri, 
-                           reply_status=200,# status code to return
-                           reply_json=None, # return response.json
-                           reply_text=None, # return response.content
-                           reply_method='POST',
-                           reply_headers={'content-type': 'application/json'}):
-    """
-    Registers the first GET request that will use find_link_by_name
-    to retrieve the HREF of the resource. The json returned is the uri 
-    provided. 
-    The reply method should match the signature of the next function call 
-    in the tested method. Most methods involve a GET to find the resource, 
-    followed by a GET/PUT/POST to get the resource.
-    """
-    # Note: href is modified so method response goes to different bound URL
-    uri_reply = '{}_reply'.format(uri)  
-    adapter.register_uri('GET', '/{}'.format(uri),
-                         json={'link':[
-                                        {
-                                         'href': '{}/{}'.format(url, uri_reply),
-                                         'method': 'POST',
-                                         'rel': uri
-                                         }
-                                       ]
-                               },
-                         status_code=200,
-                         headers={'content-type': 'application/json'})
-    # Register the URI for the reply to above GET
-    # Other attributes are included in the POST/PUT/GET reply
-    json = reply_json if reply_json is not None else {}
-    if reply_text is not None:
-        json = None
-    
-    adapter.register_uri(reply_method, '/{}'.format(uri_reply),
-                         json=json,
-                         text=reply_text,
-                         status_code=reply_status,
-                         headers=reply_headers)
-    
-         
+from smc.api.web import SMCAPIConnection
+        
 @requests_mock.Mocker()
 class NodeMocks(unittest.TestCase):
     
-    def setUp(self):
-        mysession.login(url, api_key)
-        
-    def tearDown(self):
-        mysession.logout()
+    @classmethod
+    def setUpClass(cls):
+        """ 
+        Set up SMC Session object once per test class. Primary reason is
+        to load the Mock session object as smc.api.session._session since
+        this assumes we will not have a real connection.
+        """
+        super(NodeMocks, cls).setUpClass()
+        adapter = requests_mock.Adapter()
+        session = requests.Session()
+        session.mount('mock', adapter)
+        mysession._session = session
+        mysession._connection = SMCAPIConnection(mysession)
     
     def test_node_create(self, m):
         node = Node.create('mynode', 'virtual_fw_node')
@@ -96,7 +40,7 @@ class NodeMocks(unittest.TestCase):
                          status_code=200, 
                          json={'nodeid': 1})
         self.assertEqual(node.nodeid, 1)
-       
+      
     def test_fetch_license_fail(self, m):
         uri = 'fetch'
         
@@ -104,9 +48,9 @@ class NodeMocks(unittest.TestCase):
                                reply_status=400, 
                                reply_json={'message':'Impossible to fetch the license',
                                            'status':0})
-
+        
         node = Node(meta=Meta(href='{}/{}'.format(url, uri)))
-        self.assertRaises(LicenseError, lambda: node.fetch_license())
+        self.assertRaises(LicenseError, lambda: node.fetch_license())  
     
     def test_fetch_license_pass(self, m):
         uri = 'fetch'
@@ -115,7 +59,7 @@ class NodeMocks(unittest.TestCase):
 
         node = Node(meta=Meta(href='{}/{}'.format(url, uri)))
         self.assertIsNone(node.fetch_license())
-     
+    
     def test_bind_license_pass(self, m):
         uri = 'bind'
         register_get_and_reply(m, uri, 
@@ -228,6 +172,7 @@ class NodeMocks(unittest.TestCase):
         result = node.appliance_status()
         self.assertIsInstance(result, ApplianceStatus)
         self.assertEqual(result.hardware_statuses, status.get('hardware_statuses')['hardware_statuses'])
+        self.assertEqual(result.interface_statuses, status.get('interface_statuses').get('interface_status'))
     
     def test_appliance_status_fail(self, m):
         uri = 'appliance_status'
@@ -528,3 +473,4 @@ class NodeMocks(unittest.TestCase):
         node = Node(meta=Meta(href='{}/{}'.format(url, uri)))
         result = node.certificate_info()
         self.assertDictEqual(result, cert)
+    
