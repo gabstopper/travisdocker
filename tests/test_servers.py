@@ -4,7 +4,7 @@ Created on Nov 11, 2016
 @author: davidlepage
 '''
 import unittest
-from smc.tests.constants import url, api_key, verify
+from .constants import url, api_key, verify
 from smc import session
 from smc.elements.servers import ManagementServer
 from smc.elements.collection import describe_log_server

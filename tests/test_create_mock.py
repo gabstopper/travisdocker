@@ -3,7 +3,7 @@ import requests_mock
 from smc.core.engines import Layer3Firewall, Layer2Firewall, IPS, MasterEngine,\
     FirewallCluster, MasterEngineCluster, Layer3VirtualEngine
 from smc.core.engine import Engine
-from smc.tests.constants import url
+from .constants import url
 from smc.api.exceptions import CreateEngineFailed
 from smc.tests.mocks import (mock_location_helper, mock_logical_intf_helper,
                              mock_zone_helper, mock_search_get_first_log_server,

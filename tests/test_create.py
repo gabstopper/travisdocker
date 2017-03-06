@@ -4,7 +4,7 @@ Created on Jun 25, 2016
 @author: davidlepage
 '''
 import unittest
-from smc.tests.constants import url, api_key, verify
+from .constants import url, api_key, verify
 from smc import session
 from smc.elements.helpers import zone_helper, logical_intf_helper,\
     location_helper

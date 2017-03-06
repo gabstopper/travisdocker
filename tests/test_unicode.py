@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*- 
 
 import unittest
-from smc.tests.constants import url, api_key, verify
+from .constants import url, api_key, verify
 from smc import session
 import smc.actions.search
 from smc.elements.network import Host

@@ -6,7 +6,6 @@ Created on Nov 13, 2016
 import unittest
 import time
 from smc import session
-#from smc.tests.constants import url, api_key, verify
 from smc.base.util import save_to_file
 from smc.core.engine import Engine
 from smc.api.exceptions import LoadEngineFailed, NodeCommandFailed,\

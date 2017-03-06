@@ -10,7 +10,7 @@ import requests
 import requests_mock
 from smc.tests.mocks import inject_mock_for_smc
 from smc import session
-from smc.tests.constants import url
+from .constants import url
 from smc.api.session import Session
 from smc.api.web import SMCAPIConnection, SMCResult
 from smc.api.web import SMCConnectionError
