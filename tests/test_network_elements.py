@@ -1,28 +1,28 @@
+import io
 import unittest
-from constants import url, api_key, verify
+import mock
+from smc.tests.constants import url, api_key, verify, is_min_required_smc_version
+from smc.administration.system import System
 from smc import session
 import smc.actions.search as search
 from smc.elements.network import Zone, DomainName, IPList, Host, AddressRange, Router,\
     Network, Expression, URLListApplication
 from smc.elements.service import UDPService, ICMPService, ICMPIPv6Service, IPService, TCPService,\
-    Protocol
+    Protocol, EthernetService
 from smc.elements.group import Group, ServiceGroup, TCPServiceGroup, UDPServiceGroup, \
     IPServiceGroup
 from smc.elements.other import LogicalInterface, Location, MacAddress,\
-    prepare_blacklist, prepare_contact_address
-from smc.elements.collection import describe_tcp_service,\
-    describe_udp_service, describe_service_group, describe_ip_service,\
-    describe_ip_service_group, describe_tcp_service_group,\
-    describe_network, describe_ip_list, describe_location
+    prepare_blacklist
+from smc.elements.collection import describe_ip_list, describe_location
 from smc.base.model import Element
 from smc.api.exceptions import UnsupportedEntryPoint, ElementNotFound,\
-    MissingRequiredInput, TaskRunFailed
+    MissingRequiredInput, TaskRunFailed, CreateElementFailed, ModificationFailed
 from smc.api.common import SMCRequest
-from smc.api.web import SMCResult
 from smc.elements.user import AdminUser, ApiClient
 from smc.elements.helpers import zone_helper, location_helper,\
     logical_intf_helper
 from smc.administration.tasks import TaskMonitor, TaskDownload
+
 
 
 class Test(unittest.TestCase):
@@ -42,8 +42,7 @@ class Test(unittest.TestCase):
                                                         json={'test'}).create())
                    
     def test_no_typeof_attribute_for_element(self):
-        class Blah(Element):
-            pass
+        class Blah(Element): pass
         self.assertRaises(ElementNotFound, lambda: Blah('test').href)
     
     def test_delete_already_deleted_host(self):
@@ -76,7 +75,7 @@ class Test(unittest.TestCase):
     def test_export_element(self):
         #Test exporting a non-system element, should just return href
         result = Host.create('api-export-test', '2.3.4.5')
-        self.assertTrue(result.href.startswith('http'))
+        self.assertTrue(result.startswith('http'))
         host = Host('api-export-test')
         export = next(host.export())
         self.assertTrue(export.startswith('http'))
@@ -100,114 +99,118 @@ class Test(unittest.TestCase):
         for link in task_details.get('link'):
             if link.get('rel') == 'result':
                 #Invalid directory specification
-                self.assertRaises(TaskRunFailed, lambda: TaskDownload(link.get('href'), '//////').run())
+                with self.assertRaises(TaskRunFailed):
+                    TaskDownload(link.get('href'), '//////').run()
                 
     
     def test_modify_system_element(self):
         #System elements should not be able to be modified
         host = Host('Localhost')
-        result = host.modify_attribute(name='myLocalhost')
-        self.assertIsInstance(result, SMCResult)
-        self.assertRegexpMatches(result.msg, r'^Cannot modify system element')
-    
+        with self.assertRaises(ModificationFailed):
+            host.modify_attribute(name='myLocalhost')
+        
     def test_modify_non_system_element(self):
         #Non system elements can be modified
         result = Host.create('api-test', '2.3.4.5')
-        self.assertTrue(result.href.startswith('http'))
+        self.assertTrue(result.startswith('http'))
         host = Host('api-test')
         result = host.modify_attribute(name='newapi-test')
-        self.assertEqual(200, result.code)
-        host = Host('newapi-test').delete()
-        self.assertEqual(204, host.code)
-    
+        self.assertIsNone(result)
+        Host('newapi-test').delete()
+        
     def test_user_creation(self):
         # Create admin user
         result = AdminUser.create(name='smcpython-admin', 
                                   local_admin=True, 
                                   superuser=True,
                                   enabled=True)
-        self.assertEqual(201, result.code)
+        self.assertTrue(result.startswith('http'))
         admin = AdminUser('smcpython-admin')
-        self.assertEqual(200, admin.enable_disable().code)
-        self.assertEqual(200, admin.change_engine_password('password').code)
-        self.assertIsNotNone(admin.change_password('password').msg)
-        self.assertEqual(200, admin.change_password('123Password!').code)
-        self.assertEqual(204, admin.delete().code)
+        self.assertIsNone(admin.enable_disable())
+        self.assertIsNone(admin.change_engine_password('password'))
+        with self.assertRaises(ModificationFailed):
+            admin.change_password('password')
+        self.assertIsNone(admin.change_password('123Password!'))
+        admin.delete()
         
     def test_api_client(self):
         # API Clients can only be exported as of 6.1.1
-        # Retrieve this API Client
         client = ApiClient('smcpython')
-        self.assertTrue( next(client.export()).startswith('http') )
+        self.assertTrue(client.href.startswith('http'))
             
     #@unittest.skip("good")
     def testHost(self):
         #Create a host and check the etag also
         result = Host.create('api-test', '2.3.4.5')
-        self.assertTrue(result.href.startswith('http'))
+        self.assertTrue(result.startswith('http'))
         
         #Get Etag
         host = Host('api-test')
         self.assertIsNotNone(host.etag)
         
-        self.assertEqual(host.get_attr_by_name('address'), '2.3.4.5')
+        self.assertEqual(host.attr_by_name('address'), '2.3.4.5')
         
         self.assertEqual(host.address, '2.3.4.5')
         host.address = '1.1.1.1'
         self.assertEqual(host.address, '1.1.1.1')
-        self.assertEqual(host.delete().code, 204)
+        host.secondary = ['8.8.8.8', '9.9.9.9']
+        for ip in host.secondary:
+            self.assertIn(ip, ['8.8.8.8', '9.9.9.9'])
+        host.ipv6_address = '2001:0db8:85a3:0000:0000:8a2e:0370:7334'
+        self.assertEqual(host.ipv6_address, '2001:0db8:85a3:0000:0000:8a2e:0370:7334')
+        host.delete()
 
     def testHost_no_addresses(self):
-        host = Host.create(name='mixedhost')
-        self.assertIsNotNone(host.msg)
-    
+        with self.assertRaises(CreateElementFailed):
+            Host.create(name='mixedhost')
+        
     def testHost_ipv4_and_ipv6(self):
         result = Host.create(name='mixedhost', ipv6_address='2001:cdba::3257:9652', address='1.1.1.1')
-        self.assertTrue(result.href.startswith('http'))
+        self.assertTrue(result.startswith('http'))
         
         host = Host('mixedhost')
-        self.assertEqual(host.get_attr_by_name('address'), '1.1.1.1')
-        self.assertEqual(host.get_attr_by_name('ipv6_address'), '2001:cdba::3257:9652')
-        self.assertEqual(host.delete().code, 204)
+        self.assertEqual(host.attr_by_name('address'), '1.1.1.1')
+        self.assertEqual(host.attr_by_name('ipv6_address'), '2001:cdba::3257:9652')
+        host.delete()
         
     def test_ipv6host(self):
         result = Host.create(name='mixedhost', ipv6_address='2001:cdba::3257:9652')
-        self.assertTrue(result.href.startswith('http'))
+        self.assertTrue(result.startswith('http'))
         
         host = Host('mixedhost')
-        self.assertEqual(host.get_attr_by_name('ipv6_address'), '2001:cdba::3257:9652')
-        self.assertEqual(host.delete().code, 204)
+        self.assertEqual(host.attr_by_name('ipv6_address'), '2001:cdba::3257:9652')
+        host.delete()
         
     def test_ipv4_address_with_secondary_ipv6(self):
         result = Host.create(name='mixedhost', address='1.1.1.1', secondary_ip=['2001:cdba::3257:9652'])
-        self.assertTrue(result.href.startswith('http'))
+        self.assertTrue(result.startswith('http'))
         
         host = Host('mixedhost')
-        self.assertEqual(host.get_attr_by_name('address'), '1.1.1.1')
-        self.assertIn('2001:cdba::3257:9652', host.get_attr_by_name('secondary'))
-        self.assertEqual(host.delete().code, 204)
+        self.assertEqual(host.attr_by_name('address'), '1.1.1.1')
+        self.assertIn('2001:cdba::3257:9652', host.attr_by_name('secondary'))
+        host.delete()
 
     def test_ipv6_address_with_secondary_ipv4(self):
         result = Host.create(name='mixedhost', ipv6_address='2001:cdba::3257:9652', secondary_ip=['1.1.1.1'])
-        self.assertTrue(result.href.startswith('http'))
+        self.assertTrue(result.startswith('http'))
         
         host = Host('mixedhost')
-        self.assertEqual(host.get_attr_by_name('ipv6_address'), '2001:cdba::3257:9652')
-        self.assertIn('1.1.1.1', host.get_attr_by_name('secondary'))
-        self.assertEqual(host.delete().code, 204)
+        self.assertEqual(host.attr_by_name('ipv6_address'), '2001:cdba::3257:9652')
+        self.assertIn('1.1.1.1', host.attr_by_name('secondary'))
+        host.delete()
     
     #@unittest.skip("good")       
     def testAddressRange(self):
         result = AddressRange.create('api-iprange', '2.3.4.5-2.3.4.6')
-        self.assertTrue(result.href.startswith('http'))
+        self.assertTrue(result.startswith('http'))
         
         addr = AddressRange('api-iprange')
-        self.assertEqual(addr.get_attr_by_name('ip_range'), '2.3.4.5-2.3.4.6')
+        self.assertEqual(addr.attr_by_name('ip_range'), '2.3.4.5-2.3.4.6')
         
         self.assertEqual(addr.iprange, '2.3.4.5-2.3.4.6')
         addr.iprange = '1.1.1.1-1.1.1.2'
         self.assertEqual(addr.iprange, '1.1.1.1-1.1.1.2')
-        self.assertEqual(addr.delete().code, 204)
+        addr.delete()
     
     #@unittest.skip("good")    
     def testRouter(self):
@@ -216,92 +219,95 @@ class Test(unittest.TestCase):
         except ElementNotFound:
             pass
         result = Router.create('foorouter', '11.1.1.1')
-        self.assertTrue(result.href.startswith('http'))
+        self.assertTrue(result.startswith('http'))
         router = Router('foorouter')
-        self.assertEqual(router.describe().get('address'), '11.1.1.1')
+        self.assertEqual(router.data.get('address'), '11.1.1.1')
         d = SMCRequest(href=router.href).delete()
         self.assertEqual(204, d.code)
         
     def test_router_ipv4_address_with_secondary_ipv6(self):
-        result = Router.create(name='mixedhost', address='1.1.1.1', secondary_ip=['2001:cdba::3257:9652'])
-        self.assertTrue(result.href.startswith('http'))
+        result = Router.create(name='mixedhost', address='1.1.1.1', 
+                               secondary_ip=['2001:cdba::3257:9652'])
+        self.assertTrue(result.startswith('http'))
         
         router = Router('mixedhost')
-        self.assertEqual(router.get_attr_by_name('address'), '1.1.1.1')
-        self.assertIn('2001:cdba::3257:9652', router.get_attr_by_name('secondary'))
-        self.assertEqual(router.delete().code, 204)
+        self.assertEqual(router.attr_by_name('address'), '1.1.1.1')
+        self.assertIn('2001:cdba::3257:9652', router.attr_by_name('secondary'))
+        router.delete()
         
     def test_router_ipv6_address_with_secondary_ipv4(self):
-        result = Router.create(name='mixedhost', ipv6_address='2001:cdba::3257:9652', secondary_ip=['1.1.1.1'])
-        self.assertTrue(result.href.startswith('http'))
+        result = Router.create(name='mixedhost', 
+                               ipv6_address='2001:cdba::3257:9652', 
+                               secondary_ip=['1.1.1.1'])
+        self.assertTrue(result.startswith('http'))
         
         router = Router('mixedhost')
-        self.assertEqual(router.get_attr_by_name('ipv6_address'), '2001:cdba::3257:9652')
-        self.assertIn('1.1.1.1', router.get_attr_by_name('secondary'))
-        self.assertEqual(router.delete().code, 204)
+        self.assertEqual(router.attr_by_name('ipv6_address'), '2001:cdba::3257:9652')
+        self.assertIn('1.1.1.1', router.attr_by_name('secondary'))
+        router.delete()
             
     #@unittest.skip("good")
     def testNetwork(self):
         # Invalid host bits
-        result = Network.create('foonetwork', '12.1.1.1/24', 'comment')
-        self.assertIsNotNone(result.msg)
-
+        with self.assertRaises(CreateElementFailed):
+            Network.create('foonetwork', '12.1.1.1/24', 'comment')
+        
         result = Network.create('foonetwork', '12.1.1.0/24')
-        self.assertTrue(result.href.startswith('http'))
+        self.assertTrue(result.startswith('http'))
         
         network = Network('foonetwork')
-        self.assertEqual(network.get_attr_by_name('ipv4_network'), '12.1.1.0/24')
-        self.assertEqual(network.delete().code, 204)
+        self.assertEqual(network.attr_by_name('ipv4_network'), '12.1.1.0/24')
+        network.delete()
     
         # Not CIDR format
-        result = Network.create('foonetwork', '12.1.1.0/255.255.255.0')
-        self.assertIsNotNone(result.msg)
+        with self.assertRaises(CreateElementFailed):
+            Network.create('foonetwork', '12.1.1.0/255.255.255.0')
         
     def test_network_ipv6(self):
         network = Network.create(name='mixednetwork', ipv6_network='fc00::/7')
-        self.assertTrue(network.href.startswith('http'))
+        self.assertTrue(network.startswith('http'))
         
         network = Network('mixednetwork')
-        self.assertEqual(network.get_attr_by_name('ipv6_network'), 'fc00::/7')
-        self.assertEqual(network.delete().code, 204)
+        self.assertEqual(network.attr_by_name('ipv6_network'), 'fc00::/7')
+        network.delete()
         
     def test_network_ipv6_and_ipv4(self):
         network = Network.create(name='mixednetwork', ipv4_network='12.12.12.0/24', 
                                  ipv6_network='fc00::/7')
-        self.assertTrue(network.href.startswith('http'))
+        self.assertTrue(network.startswith('http'))
         
         network = Network('mixednetwork')
-        self.assertEqual(network.get_attr_by_name('ipv6_network'), 'fc00::/7')
-        self.assertEqual(network.get_attr_by_name('ipv4_network'), '12.12.12.0/24')
-        self.assertEqual(network.delete().code, 204)
+        self.assertEqual(network.attr_by_name('ipv6_network'), 'fc00::/7')
+        self.assertEqual(network.attr_by_name('ipv4_network'), '12.12.12.0/24')
+        network.delete()
           
     #@unittest.skip("good")         
     def testGroup(self):
         # Member not href
-        result = Group.create('foogroup', ['test'], 'comment')
-        self.assertEqual(result.code, 400)
+        with self.assertRaises(CreateElementFailed):
+            Group.create('foogroup', ['test'], 'comment')
         
         # Same as above
-        result = Group.create('foogroup', ['172.18.1.80'])
-        self.assertEqual(400, result.code)
+        with self.assertRaises(CreateElementFailed):
+            Group.create('foogroup', ['172.18.1.80'])
         
         # Empty group
         group = Group.create('foogroup')
-        self.assertTrue(group.href.startswith('http'))
+        self.assertTrue(group.startswith('http'))
         
         # Get context
         group = Group('foogroup')
         
         # Add member
         Host.create('groupmember', '1.1.1.1')
-        self.assertIn(group.update_members(members=[Host('groupmember').href]).code, [200,204])
+        self.assertIsNone(group.update_members(members=[Host('groupmember').href]))
         # Get the members back and verify
         self.assertIn(Host('groupmember').href, group.obtain_members())
         # Delete all members
         group.empty_members()
         self.assertTrue(len(group.obtain_members()) == 0)
         # Delete
-        self.assertIn(group.delete().code, [200, 204])
+        group.delete()
         
     def testLocation(self):
         for locations in describe_location():
@@ -312,7 +318,7 @@ class Test(unittest.TestCase):
             self.assertRaises(UnsupportedEntryPoint, lambda: Location.create('api-location'))
         else:
             result = Location.create('api-location')
-            self.assertTrue(result.href.startswith('http'))
+            self.assertTrue(result.startswith('http'))
             
             try:
                 loc = Location('api-location')
@@ -320,48 +326,41 @@ class Test(unittest.TestCase):
             except ElementNotFound:
                 pass
             else:
-                d = SMCRequest(result.href).delete()
+                d = SMCRequest(result).delete()
                 self.assertEqual(204, d.code)
         
     #@unittest.skip("good")
     def testZone(self):
         
         result = Zone.create('api-zone')
-        self.assertTrue(result.href.startswith('http'))
-        self.assertEqual(Zone('api-zone').delete().code, 204)
+        self.assertTrue(result.startswith('http'))
+        Zone('api-zone').delete()
         
     #@unittest.skip("good")
     def testLogicalInterface(self):
     
         result = LogicalInterface.create('api-logical-interface')
-        self.assertTrue(result.href.startswith('http'))
+        self.assertTrue(result.startswith('http'))
         r = LogicalInterface('api-logical-interface')
-        self.assertEqual(r.get_attr_by_name('name'), 'api-logical-interface')
-        self.assertEqual(r.delete().code, 204)
+        self.assertEqual(r.attr_by_name('name'), 'api-logical-interface')
+        r.delete()
 
     #@unittest.skip("good")
     def testDomainName(self):
         result = DomainName.create('www.lepages.net')
-        self.assertTrue(result.href.startswith('http'))  
+        self.assertTrue(result.startswith('http'))  
         dn = DomainName('www.lepages.net')
-        self.assertEqual(dn.get_attr_by_name('name'), 'www.lepages.net')
-        self.assertEqual(dn.delete().code, 204)
+        self.assertEqual(dn.attr_by_name('name'), 'www.lepages.net')
+        dn.delete()
     
     def testMacAddress(self):
         result = MacAddress.create(name='mymac', mac_address='22:22:22:22:22:22')
-        self.assertEqual(201, result.code)
+        self.assertTrue(result.startswith('http'))
+        
         obj = MacAddress('mymac')
-        self.assertEqual(obj.get_attr_by_name('address'), '22:22:22:22:22:22')
-        self.assertEqual(obj.delete().code, 204)
-        
-    def testContactAddress(self):
-        result = prepare_contact_address(address='1.1.1.1', location='smcpython')
-        self.assertIsInstance(result.get('contact_addresses'), list)
-        data = result.get('contact_addresses')[0]
-    
-        self.assertEqual(data.get('address'), '1.1.1.1')
-        self.assertTrue(data.get('location_ref').startswith('http'))
-        
+        self.assertEqual(obj.attr_by_name('address'), '22:22:22:22:22:22')
+        obj.delete()
+            
     def test_prepareblacklist(self):
         result = prepare_blacklist('1.1.1.1/32', '0.0.0.0/0')
         self.assertIsInstance(result, dict)
@@ -385,185 +384,195 @@ class Test(unittest.TestCase):
         expression = Expression.create(name='pythonexpression', 
                                        ne_ref=[],
                                        sub_expression=sub_expression)
-        self.assertEqual(201, expression.code)
+        self.assertTrue(expression.startswith('http'))
         expr = Expression('pythonexpression')
-        d = expr.delete()
-        self.assertEqual(204, d.code)
-        self.assertEqual(204, host9.delete().code)
-        self.assertEqual(204, host10.delete().code)    
+        expr.delete()
+        host9.delete()
+        host10.delete()  
                     
     #@unittest.skip("good")
     def testTCPService(self):
         
         result = TCPService.create('api-tcpservice', 5000, 5005, comment='blahcomment')
-        self.assertTrue(result.href.startswith('http'))
+        self.assertTrue(result.startswith('http'))
         
         service = TCPService('api-tcpservice')
-        self.assertEqual(service.get_attr_by_name('min_dst_port'), 5000)
-        self.assertEqual(service.get_attr_by_name('max_dst_port'), 5005)
-        self.assertEqual(service.delete().code, 204)
+        self.assertEqual(service.attr_by_name('min_dst_port'), 5000)
+        self.assertEqual(service.attr_by_name('max_dst_port'), 5005)
+        service.delete()
     
-        #result = TCPService('HTTP')
-        #self.assertIsInstance(result.protocol_agent, Protocol)
+        result = TCPService('HTTP')
+        self.assertIsInstance(result.protocol_agent, Protocol)
     
     #@unittest.skip("good")
     def testUDPService(self):
         
         result = UDPService.create('api-udpservice', 5000, 5005, comment='blahcomment')
-        self.assertTrue(result.href.startswith('http'))
+        self.assertTrue(result.startswith('http'))
         
         service = UDPService('api-udpservice')
-        self.assertEqual(service.get_attr_by_name('min_dst_port'), 5000)
-        self.assertEqual(service.get_attr_by_name('max_dst_port'), 5005)
-        self.assertEqual(service.get_attr_by_name('comment'), 'blahcomment')
+        self.assertEqual(service.attr_by_name('min_dst_port'), 5000)
+        self.assertEqual(service.attr_by_name('max_dst_port'), 5005)
+        self.assertEqual(service.attr_by_name('comment'), 'blahcomment')
         
-        self.assertEqual(service.delete().code, 204)
+        service.delete()
         
     #@unittest.skip("good")
     def testICMPService(self):
         
         result = ICMPService.create('api-icmp', 3)
-        self.assertTrue(result.href.startswith('http'))
+        self.assertTrue(result.startswith('http'))
         
         service = ICMPService('api-icmp')
-        self.assertEqual(service.get_attr_by_name('icmp_type'), 3)
-        self.assertEqual(service.delete().code, 204)
+        self.assertEqual(service.attr_by_name('icmp_type'), 3)
+        service.delete()
         
         result = ICMPService.create('api-icmp', 3, 7, comment='api comment')
-        self.assertTrue(result.href.startswith('http'))
+        self.assertTrue(result.startswith('http'))
         
         service = ICMPService('api-icmp')
-        self.assertEqual(service.get_attr_by_name('icmp_type'), 3)
-        self.assertEqual(service.get_attr_by_name('icmp_code'), 7)
-        self.assertEqual(service.get_attr_by_name('comment'), 'api comment')
-        self.assertEqual(service.delete().code, 204)
+        self.assertEqual(service.attr_by_name('icmp_type'), 3)
+        self.assertEqual(service.attr_by_name('icmp_code'), 7)
+        self.assertEqual(service.attr_by_name('comment'), 'api comment')
+        service.delete()
         
     #@unittest.skip("good")
     def testIPService(self):
        
         result = IPService.create('api-ipservice', 93)
-        self.assertTrue(result.href.startswith('http'))
+        self.assertTrue(result.startswith('http'))
         
         service = IPService('api-ipservice')
-        self.assertEqual(service.get_attr_by_name('protocol_number'), '93')
-        self.assertEqual(service.delete().code, 204)
+        self.assertEqual(service.attr_by_name('protocol_number'), '93')
+        service.delete()
         
     #@unittest.skip("good")
     def test_ICMPv6Service(self):
         
-        result = ICMPIPv6Service.create('api-Neighbor Advertisement Message', 139, comment='api-test')
-        self.assertTrue(result.href.startswith('http'))
+        result = ICMPIPv6Service.create('api-Neighbor Advertisement Message', 139, 
+                                        comment='api-test')
+        self.assertTrue(result.startswith('http'))
         
         service = ICMPIPv6Service('api-Neighbor Advertisement Message')
-        self.assertEqual(service.get_attr_by_name('icmp_type'), 139)
-        self.assertEqual(service.get_attr_by_name('comment'), 'api-test')
+        self.assertEqual(service.attr_by_name('icmp_type'), 139)
+        self.assertEqual(service.attr_by_name('comment'), 'api-test')
         
-        self.assertEqual(service.delete().code, 204)
+        service.delete()
         
     def testEthernetService(self):
-        pass
+        system = System()
+        if is_min_required_smc_version(system.smc_version, '6.1.2'):
+            result = EthernetService.create(name='myService', 
+                                            ethertype='32828')
+            self.assertTrue(result.startswith('http'))
+            EthernetService('myService').delete()
                  
     #@unittest.skip("good")
     def testServiceGroup(self):
         """ Test service group creation """
         result = TCPService.create('api-tcp', 5000)
-        self.assertTrue(result.href.startswith('http'))
+        self.assertTrue(result.startswith('http'))
         
         result = UDPService.create('api-udp', 5001)
-        self.assertTrue(result.href.startswith('http'))
+        self.assertTrue(result.startswith('http'))
       
         tcp = TCPService('api-tcp')
         udp = UDPService('api-udp')
-        result = ServiceGroup.create('api-servicegroup', element=[tcp.href, udp.href], comment='test')
-        self.assertTrue(result.href.startswith('http'))
+        result = ServiceGroup.create('api-servicegroup', 
+                                     element=[tcp.href, udp.href], 
+                                     comment='test')
+        self.assertTrue(result.startswith('http'))
         
         group = ServiceGroup('api-servicegroup')
         # Href in service group
-        self.assertIn(tcp.href, group.get_attr_by_name('element'))
-        self.assertIn(udp.href, group.get_attr_by_name('element'))
+        self.assertIn(tcp.href, group.attr_by_name('element'))
+        self.assertIn(udp.href, group.attr_by_name('element'))
         
-        self.assertEqual(group.delete().code, 204)
-        self.assertEqual(tcp.delete().code, 204)
-        self.assertEqual(udp.delete().code, 204)
+        group.delete()
+        tcp.delete()
+        udp.delete()
         
     #@unittest.skip("good")
     def testTCPServiceGroup(self):
         
         tcp = TCPService.create('api-tcp', 5000)
-        self.assertTrue(tcp.href.startswith('http'))
+        self.assertTrue(tcp.startswith('http'))
         
         tcp2 = TCPService.create('api-tcp2', 5001)
-        self.assertTrue(tcp2.href.startswith('http'))
+        self.assertTrue(tcp2.startswith('http'))
         
         tcp = TCPService('api-tcp')
         tcp2 = TCPService('api-tcp2')
         
-        result = TCPServiceGroup.create('api-tcpservicegroup', element=[tcp.href, tcp2.href])
-        self.assertTrue(result.href.startswith('http'))
+        result = TCPServiceGroup.create('api-tcpservicegroup', 
+                                        element=[tcp.href, tcp2.href])
+        self.assertTrue(result.startswith('http'))
         
         group = TCPServiceGroup('api-tcpservicegroup')
-        self.assertIn(tcp.href, group.get_attr_by_name('element'))
-        self.assertIn(tcp2.href, group.get_attr_by_name('element'))
+        self.assertIn(tcp.href, group.attr_by_name('element'))
+        self.assertIn(tcp2.href, group.attr_by_name('element'))
         
-        self.assertEqual(group.delete().code, 204)
-        self.assertEqual(tcp.delete().code, 204)
-        self.assertEqual(tcp2.delete().code, 204)
+        group.delete()
+        tcp.delete()
+        tcp2.delete()
             
     def testUDPServiceGroup(self):
        
         result = UDPService.create('udp-svc1', 5000)
-        self.assertTrue(result.href.startswith('http'))
+        self.assertTrue(result.startswith('http'))
         
         result = UDPService.create('udp-svc2', 5001)
-        self.assertTrue(result.href.startswith('http'))
+        self.assertTrue(result.startswith('http'))
         
         udp = UDPService('udp-svc1')
         udp2 = UDPService('udp-svc2') 
-        result = UDPServiceGroup.create('api-udpservicegroup', element=[udp.href, udp2.href])
-        self.assertTrue(result.href.startswith('http'))
+        result = UDPServiceGroup.create('api-udpservicegroup', 
+                                        element=[udp.href, udp2.href])
+        self.assertTrue(result.startswith('http'))
         
         group = UDPServiceGroup('api-udpservicegroup')
-        self.assertIn(udp.href, group.get_attr_by_name('element'))
-        self.assertIn(udp2.href, group.get_attr_by_name('element'))
+        self.assertIn(udp.href, group.attr_by_name('element'))
+        self.assertIn(udp2.href, group.attr_by_name('element'))
         
-        self.assertEqual(group.delete().code, 204)
-        self.assertEqual(udp.delete().code, 204)
-        self.assertEqual(udp2.delete().code, 204)
-        
-        
+        group.delete()
+        udp.delete()
+        udp2.delete()
+            
     def testIPServiceGroup(self):
        
         result = IPService.create('api-service', 93)
-        self.assertTrue(result.href.startswith('http'))
+        self.assertTrue(result.startswith('http'))
         
         result = IPService.create('api-service2', 90)
-        self.assertTrue(result.href.startswith('http'))
+        self.assertTrue(result.startswith('http'))
         
         ipsvc = IPService('api-service')
         ipsvc2 = IPService('api-service2')
         
-        result = IPServiceGroup.create('api-ipservicegroup', element=[ipsvc.href, ipsvc2.href], comment='mygroup')
-        self.assertTrue(result.href.startswith('http'))
+        result = IPServiceGroup.create('api-ipservicegroup', 
+                                       element=[ipsvc.href, ipsvc2.href], 
+                                       comment='mygroup')
+        self.assertTrue(result.startswith('http'))
         
         group = IPServiceGroup('api-ipservicegroup')
-        self.assertIn(ipsvc.href, group.get_attr_by_name('element'))
-        self.assertIn(ipsvc2.href, group.get_attr_by_name('element'))
+        self.assertIn(ipsvc.href, group.attr_by_name('element'))
+        self.assertIn(ipsvc2.href, group.attr_by_name('element'))
         
-        self.assertEqual(group.delete().code, 204)
-        self.assertEqual(ipsvc.delete().code, 204)
-        self.assertEqual(ipsvc2.delete().code, 204)
+        group.delete()
+        ipsvc.delete()
+        ipsvc2.delete()
     
     def test_IPList_createWithJson(self):
         if session.api_version >= 6.1:
             try:
                 iplist = IPList('smcpython-iplist')
-                self.assertEqual(iplist.delete().code, 204)
+                iplist.delete()
             except ElementNotFound:
                 pass
             
             ips = ['1.1.1.1', '2.2.2.2']
             ip = IPList.create(name='smcpython-iplist', iplist=ips)
-            self.assertEqual(ip.code, 202)
+            self.assertTrue(ip.startswith('http'))
     
     def test_download_IPList_as_text(self):
         if session.api_version >= 6.1:
@@ -571,7 +580,7 @@ class Test(unittest.TestCase):
             if location:
                 iplist = location[0]
                 result = iplist.download(filename='iplist.txt', as_type='txt')
-                self.assertEqual(200, result.code)
+                self.assertIsNone(result)
     
     def test_FAILED_download_IPList_as_text(self):
         #Fails if directory doesnt exist or is a directory
@@ -579,77 +588,112 @@ class Test(unittest.TestCase):
             location = describe_ip_list(name=['smcpython-iplist'])
             if location:
                 iplist = location[0]
-                self.assertRaises(IOError, lambda: iplist.download(filename='/blah/ahagsd/iplist.txt', as_type='txt'))
-                           
+                with self.assertRaises(IOError):
+                    iplist.download(filename='/blah/ahagsd/iplist.txt', 
+                                    as_type='txt')
+                     
     def test_download_IPList_as_zip(self): 
         if session.api_version >= 6.1:
             location = describe_ip_list(name=['smcpython-iplist'])
             if location:
                 iplist = location[0]
                 result = iplist.download(filename='iplist.zip', as_type='zip')
-                self.assertEqual(200, result.code)
+                self.assertIsNone(result)
                 # Require the filename, will fail
-                self.assertRaises(MissingRequiredInput, lambda: iplist.download(as_type='zip'))
+                with self.assertRaises(MissingRequiredInput):
+                    iplist.download(as_type='zip')
         
     def test_download_IPList_as_json(self):
+        system = System()
+        
         if session.api_version >= 6.1:
             location = describe_ip_list(name=['smcpython-iplist'])
             if location:
                 iplist = location[0]
                 result = iplist.download(as_type='json')
-                ips = ['1.1.1.1', '2.2.2.2']
-                #print result.json
-                self.assertEqual(ips, result.json.get('ip'))
+                # Version 6.1.2 has a problem when JSON is NOT returned when
+                # specifying application/json headers
+                if is_min_required_smc_version(system.smc_version, '6.1.2'):
+                    self.assertIsNone(result)
+                else:
+                    ips = ['1.1.1.1', '2.2.2.2']
+                    self.assertEqual(ips, result.json.get('ip'))
     
+    #@mock.patch('smc.elements.network.open', create=True)      
     def test_upload_IPList_as_zip(self):
         if session.api_version >= 6.1:
+            
+            #zf = zipfile.ZipFile(io.BytesIO(), "a", zipfile.ZIP_DEFLATED, False)
+            # Write the file to the in-memory zip
+            #zf.writestr('ip_addresses', '1.1.1.1\n2.2.2.2\n3.3.3.3')
+            #print(zf)
+            
+            #mock_open.return_value = ('iplist.zip', zf)
+            iplist = None
             location = describe_ip_list(name=['smcpython-iplist'])
             if location:
                 iplist = location[0]
-                result = iplist.upload(filename='iplist.zip') 
-                self.assertEqual(202, result.code)
             else:
-                ip = IPList.create(name='smcpython-iplist')
-                self.assertEqual(201, ip.code, ip.msg)
-                lst = IPList('smcpython-iplist')
-                result = lst.upload(filename='iplist.zip')
-                self.assertEqual(202, result.code)
-               
-    def test_upload_IPList_as_txt(self):
-        if session.api_version >= 6.1:
-            import time
-            time.sleep(2)
-            location = describe_ip_list(name=['smcpython-iplist'])
-            if location:
-                iplist = location[0]
-                result = iplist.upload(filename='iplist.txt', as_type='txt')
-                self.assertEqual(202, result.code)
-            else:
-                ip = IPList.create(name='smcpython-iplist')
-                self.assertEqual(201, ip.code, ip.msg)
-                lst = IPList('smcpython-iplist')
-                result = lst.upload(filename='iplist.txt', as_type='txt')
-                self.assertEqual(202, result.code, result.msg)
-                self.assertEqual(204, lst.delete().code)
+                href = IPList.create(name='smcpython-iplist')
+                self.assertTrue(href.startswith('http'))
+                iplist = IPList('smcpython-iplist')
                 
+            result = iplist.upload(filename='iplist.zip')
+            self.assertIsNone(result)
+       
+    @mock.patch('smc.elements.network.open', create=True)           
+    def test_upload_IPList_as_txt(self, mock_open):
+        if session.api_version >= 6.1:
+            cfg = ("1.1.1.1\n2.2.2.2")
+            mock_open.return_value = io.StringIO(u'{}'.format(cfg))
+            iplist = None
+            location = describe_ip_list(name=['smcpython-iplist'])
+            if location:
+                iplist = location[0]
+            else:
+                href = IPList.create(name='smcpython-iplist')
+                self.assertTrue(href.startswith('http'))
+                iplist = IPList('smcpython-iplist')
+                
+            result = iplist.upload(filename='iplist.txt', as_type='txt')
+            self.assertIsNone(result)
+            iplist.delete()
+                
+              
     def test_upload_IPList_as_json(self):
         if session.api_version >= 6.1:
             location = describe_ip_list(name=['smcpython-iplist'])
             if location:
                 iplist = location[0]
-                result = iplist.upload(json={'ip': ['1.1.1.1', '2.2.2.2', '3.3.3.3']}, as_type='json')
-                self.assertEqual(202, result.code)
+                result = iplist.upload(json={'ip': ['1.1.1.1', '2.2.2.2', '3.3.3.3']}, 
+                                       as_type='json')
+                self.assertIsNone(result)
+                
+                with self.assertRaises(CreateElementFailed):
+                    iplist.upload(json={'ip': ['1.1.1.1a']}, 
+                                       as_type='json')
         
         for iplist in describe_ip_list(name=['smcpython-iplist']):
             d = SMCRequest(iplist.href).delete()
-            self.assertEqual(204, d.code)     
+            self.assertEqual(204, d.code)
     
+    @mock.patch('smc.elements.network.open', create=True)
+    def test_upload_IPList_fails_and_raisesException(self, mock_open):
+        """
+        Invalid format of IP List file
+        """
+        cfg = ("blah")
+        mock_open.return_value = io.StringIO(u'{}'.format(cfg))
+        iplist = IPList('smcpython-iplist')
+        with self.assertRaises(CreateElementFailed):
+            iplist.upload(filename='iplist.zip')
+   
     def test_URLApplication(self):
         # URL List Application
         result = URLListApplication.create(name='whitelist', 
                                            url_entry=['www.google.com', 'www.cnn.com'])
-        self.assertTrue(result.href.startswith('http'))
-        self.assertIn(URLListApplication('whitelist').delete().code, [200, 204])
+        self.assertTrue(result.startswith('http'))
+        URLListApplication('whitelist').delete()
     
     def test_zone_helper(self):
         result = zone_helper('foozone')

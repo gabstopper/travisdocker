@@ -1,15 +1,27 @@
+from functools import wraps
 import unittest
-import requests
 import requests_mock
-from smc import session as mysession
 from smc.api.exceptions import LicenseError, NodeCommandFailed
-from smc.core.node import Node, ApplianceStatus, NodeStatus, Diagnostic
-from .constants import url, register_get_and_reply, register_request
+from smc.core.node import Node, ApplianceStatus, NodeStatus, Diagnostic,\
+    HardwareStatus, InterfaceStatus
+from smc.tests.constants import url
 from smc.base.model import Meta
-from smc.api.web import SMCAPIConnection
-        
+from smc.tests.mocks import inject_mock_for_smc
+
+def http304(func):
+    """
+    When cache is called, return 304 to indicate cache is current
+    as it's statically set in the NodeTest classmethod
+    """
+    @wraps(func)
+    def func_wrapper(*args, **kwargs):
+        m = args[1]
+        m.get('/node', status_code=304)
+        func(*args, **kwargs)
+    return func_wrapper
+  
 @requests_mock.Mocker()
-class NodeMocks(unittest.TestCase):
+class NodeTests(unittest.TestCase):
     
     @classmethod
     def setUpClass(cls):
@@ -18,176 +30,151 @@ class NodeMocks(unittest.TestCase):
         to load the Mock session object as smc.api.session._session since
         this assumes we will not have a real connection.
         """
-        super(NodeMocks, cls).setUpClass()
-        adapter = requests_mock.Adapter()
-        session = requests.Session()
-        session.mount('mock', adapter)
-        mysession._session = session
-        mysession._connection = SMCAPIConnection(mysession)
+        super(NodeTests, cls).setUpClass()
+        inject_mock_for_smc()
+        cls.node = Node(meta=Meta(href='{}/node'.format(url)))
+        etag, data = cls.node_cache()
+        #cls.node._cache = Cache(cls.node, data, etag)
+        cls.node.add_cache(data, etag)
     
+    @classmethod
+    def node_cache(self):
+        return ('12345abcd', 
+              {'activate_test': True,
+               'disabled': False,
+               'link': [{'href': '{}/fetch_license'.format(url),
+                         'method': 'POST',
+                         'rel': 'fetch'},
+                        {'href': '{}/bind_license'.format(url),
+                         'method': 'POST',
+                         'rel': 'bind'},
+                        {'href': '{}/unbind_license'.format(url),
+                         'method': 'POST',
+                         'rel': 'unbind'},
+                        {'href': '{}/cancel_unbind_license'.format(url),
+                         'method': 'POST',
+                         'rel': 'cancel_unbind'},
+                        {'href': '{}/initial_contact'.format(url),
+                         'method': 'POST',
+                         'rel': 'initial_contact'},
+                        {'href': '{}/appliance_status'.format(url),
+                         'method': 'GET',
+                         'rel': 'appliance_status'},
+                        {'href': '{}/status'.format(url),
+                         'method': 'GET',
+                         'rel': 'status'},
+                        {'href': '{}/go_online'.format(url),
+                         'method': 'PUT',
+                         'rel': 'go_online'},
+                        {'href': '{}/go_offline'.format(url),
+                         'method': 'PUT',
+                         'rel': 'go_offline'},
+                        {'href': '{}/go_standby'.format(url),
+                         'method': 'PUT',
+                         'rel': 'go_standby'},
+                        {'href': '{}/lock_online'.format(url),
+                         'method': 'PUT',
+                         'rel': 'lock_online'},
+                        {'href': '{}/lock_offline'.format(url),
+                         'method': 'PUT',
+                         'rel': 'lock_offline'},
+                        {'href': '{}/reset_user_db'.format(url),
+                         'method': 'PUT',
+                         'rel': 'reset_user_db'},
+                        {'href': '{}/diagnostic'.format(url),
+                         'method': 'GET',
+                         'rel': 'diagnostic'},
+                        {'href': '{}/send_diagnostic'.format(url),
+                         'method': 'POST',
+                         'rel': 'send_diagnostic'},
+                        {'href': '{}/reboot'.format(url),
+                         'method': 'PUT',
+                         'rel': 'reboot'},
+                        {'href': '{}/sginfo',
+                         'method': 'GET',
+                         'rel': 'sginfo'},
+                        {'href': '{}/ssh'.format(url),
+                         'method': 'PUT',
+                         'rel': 'ssh'},
+                        {'href': '{}/change_ssh_pwd'.format(url),
+                         'method': 'PUT',
+                         'rel': 'change_ssh_pwd'},
+                        {'href': '{}/time_sync'.format(url),
+                         'method': 'PUT',
+                         'rel': 'time_sync'},
+                        {'href': '{}/certificate_info'.format(url),
+                         'method': 'GET',
+                         'rel': 'certificate_info'},
+                        {'href': '{}',
+                         'method': 'GET',
+                         'rel': 'self',
+                         'type': 'firewall_node'}],
+                'loopback_node_dedicated_interface': [],
+                'name': 'thenode',
+                'nodeid': 1})
+    
+    def del_cache_item(self, item):
+        self.node.data['link'][:] = [d 
+                                     for d in self.node.data['link'] 
+                                     if d.get('rel') != item]
+       
     def test_node_create(self, m):
         node = Node.create('mynode', 'virtual_fw_node')
         data = node.get('virtual_fw_node')
         self.assertEqual(data.get('name'), 'mynode node 1')
         self.assertEqual(data.get('nodeid'), 1)
     
+    @http304
     def test_node_using_meta(self, m):
-        uri = 'node'
-        node = Node(meta=Meta(href='{}/{}'.format(url, uri), type='virtual', name='mynode'))
+        node = Node(meta=Meta(href='{}/node'.format(url), type='virtual', name='mynode'))
+        etag, data = NodeTests.node_cache()
+        node.add_cache(data)
         self.assertEqual(node.name, 'mynode')
         self.assertEqual(node.type, 'virtual')
-        register_request(m, uri, 
-                         status_code=200, 
-                         json={'nodeid': 1})
         self.assertEqual(node.nodeid, 1)
-      
-    def test_fetch_license_fail(self, m):
-        uri = 'fetch'
-        
-        register_get_and_reply(m, uri, 
-                               reply_status=400, 
-                               reply_json={'message':'Impossible to fetch the license',
-                                           'status':0})
-        
-        node = Node(meta=Meta(href='{}/{}'.format(url, uri)))
-        self.assertRaises(LicenseError, lambda: node.fetch_license())  
     
-    def test_fetch_license_pass(self, m):
-        uri = 'fetch'
-        register_get_and_reply(m, uri, 
-                               reply_status=200)
+    @http304
+    def test_fetch_license(self, m):
+        m.post('/fetch_license', [{'status_code': 200},
+                                  {'status_code': 400}])
+        self.assertIsNone(self.node.fetch_license())
+        self.assertRaises(LicenseError, lambda: self.node.fetch_license())
+        
+    @http304
+    def test_bind_license(self, m):
+        m.post('/bind_license', [{'status_code': 200},
+                                 {'status_code': 400}])
+        self.assertIsNone(self.node.bind_license())
+        self.assertRaises(LicenseError, lambda: self.node.bind_license())
+    
+    @http304
+    def test_unbind_license(self, m):
+        m.post('/unbind_license', [{'status_code': 200},
+                                   {'status_code': 400}])
+        self.assertIsNone(self.node.unbind_license())
+        self.assertRaises(LicenseError, lambda: self.node.unbind_license())
+    
+    @http304
+    def test_cancel_unbind(self, m):
+        m.post('/cancel_unbind_license', [{'status_code': 200},
+                                          {'status_code': 400}])
+        self.assertIsNone(self.node.cancel_unbind_license())
+        self.assertRaises(LicenseError, lambda: self.node.cancel_unbind_license())
+    
+    @http304
+    def test_go_online_offline_standby_lock(self, m):
+        actions = ['go_online', 'go_offline', 'go_standby', 'lock_online',
+                   'lock_offline']
+        
+        for action in actions:
+            m.put('/{}'.format(action), [{'status_code': 200},
+                                         {'status_code': 400}])
 
-        node = Node(meta=Meta(href='{}/{}'.format(url, uri)))
-        self.assertIsNone(node.fetch_license())
-    
-    def test_bind_license_pass(self, m):
-        uri = 'bind'
-        register_get_and_reply(m, uri, 
-                               reply_status=200)
+            self.assertIsNone(getattr(self.node, action)())
+            self.assertRaises(NodeCommandFailed, lambda: getattr(self.node, action)())  
 
-        node = Node(meta=Meta(href='{}/{}'.format(url, uri)))
-        self.assertIsNone(node.bind_license())
-    
-    def test_bind_license_fail(self, m):
-        uri = 'bind'
-        
-        register_get_and_reply(m, uri, 
-                               reply_status=400, 
-                               reply_json={'details': ['Another license is already bound to this component.'],
-                                           'message': 'Impossible to auto-bind the license.',
-                                           'status': 0})
-        
-        node = Node(meta=Meta(href='{}/{}'.format(url, uri)))
-        self.assertRaises(LicenseError, lambda: node.bind_license())
-    
-    def test_unbind_license_pass(self, m):
-        uri = 'unbind'
-        
-        register_get_and_reply(m, uri, 
-                               reply_status=200)
-        
-        node = Node(meta=Meta(href='{}/{}'.format(url, uri)))
-        self.assertIsNone(node.unbind_license())
-    
-    def test_unbind_license_fail(self, m):
-        uri = 'unbind'
-        
-        register_get_and_reply(m, uri, 
-                               reply_status=400,
-                               reply_json={'message': 'error unbind'})
-
-        node = Node(meta=Meta(href='{}/{}'.format(url, uri)))
-        self.assertRaises(LicenseError, lambda: node.unbind_license())
-    
-    def test_cancel_unbind_pass(self, m):
-        uri = 'cancel_unbind'
-        register_get_and_reply(m, uri, 
-                               reply_status=200)
-
-        node = Node(meta=Meta(href='{}/{}'.format(url, uri)))
-        self.assertIsNone(node.cancel_unbind_license())
-         
-    def test_cancel_unbind_fail(self, m):
-        uri = 'cancel_unbind'
-        
-        register_get_and_reply(m, uri,
-                               reply_status=400, 
-                               reply_json={'message': 'error unbind'})
-
-        node = Node(meta=Meta(href='{}/{}'.format(url, uri)))
-        self.assertRaises(LicenseError, lambda: node.cancel_unbind_license())
-
-    def test_initial_contact_fail_node_not_supported(self, m):
-        # Some nodes do not support initial contact and will not have an
-        uri = 'initial_contact'
-        # Simulate no 'rel' being returned
-        register_request(m, uri, status_code=200,
-                        json={'link':[
-                                        {
-                                         'href': '{}/{}'.format(url, uri),
-                                         'method': 'POST',
-                                         'rel': 'foo'
-                                        }
-                                      ]
-                              })
-        
-        node = Node(meta=Meta(href='{}/{}'.format(url, uri)))
-        self.assertRaises(NodeCommandFailed, lambda: node.initial_contact())
-    
-    
-    def test_initial_contact_pass_as_content(self, m):
-        uri = 'initial_contact'
-        
-        register_get_and_reply(m, uri, 
-                               reply_status=200, 
-                               reply_text='INITIAL CONFIG',
-                               reply_headers={'content-type': 'text/plain'})
-        
-        node = Node(meta=Meta(href='{}/{}'.format(url, uri)))
-        result = node.initial_contact()
-        self.assertEqual(result, 'INITIAL CONFIG')
-    
-    def test_initial_contact_as_file(self, m):
-        uri = 'initial_contact'
-        register_get_and_reply(m, uri, 
-                               reply_status=200, 
-                               reply_text='INITIAL CONFIG', 
-                               reply_headers={'content-type': 'application/octet-stream'})
-        
-        node = Node(meta=Meta(href='{}/{}'.format(url, uri)))
-        self.assertRaises(NodeCommandFailed, lambda: node.initial_contact(filename='/foo'))
-        self.assertEqual(node.initial_contact(filename='~'), 'INITIAL CONFIG')
-    
-    def test_appliance_status_pass(self, m):
-        uri = 'appliance_status'
-        
-        status = {'interface_statuses': {'interface_status': []}, 
-                  'hardware_statuses': {'hardware_statuses': []}}
-        
-        register_get_and_reply(m, uri, 
-                               reply_json=status,
-                               reply_method='GET')
-        
-        node = Node(meta=Meta(href='{}/{}'.format(url, uri)))
-        result = node.appliance_status()
-        self.assertIsInstance(result, ApplianceStatus)
-        self.assertEqual(result.hardware_statuses, status.get('hardware_statuses')['hardware_statuses'])
-        self.assertEqual(result.interface_statuses, status.get('interface_statuses').get('interface_status'))
-    
-    def test_appliance_status_fail(self, m):
-        uri = 'appliance_status'
-        
-        register_get_and_reply(m, uri, 
-                               reply_status=404, 
-                               reply_json={'message':'Impossible to retrieve status',
-                                           'status':0},
-                               reply_method='GET')
-        
-        node = Node(meta=Meta(href='{}/{}'.format(url, uri)))
-        self.assertRaises(NodeCommandFailed, lambda: node.appliance_status())
-    
-    def test_status_pass(self, m):
-        uri = 'status'
+    @http304
+    def test_status(self, m):
         
         status = {'dyn_up': '838', 'configuration_status': 'Installed', 
                   'version': 'version 6.1 #17028', 'name': 've-1 node 1', 
@@ -195,282 +182,173 @@ class NodeMocks(unittest.TestCase):
                   'installed_policy': 'Master Engine Policy', 
                   'platform': 'x86-64'}
         
-        register_get_and_reply(m, uri, 
-                               reply_json=status, 
-                               reply_method='GET')
-
-        node = Node(meta=Meta(href='{}/{}'.format(url, uri)))
-        node_dict = node.status()
+        m.get('/status', [{'status_code': 200, 'json': status,
+                           'headers': {'content-type': 'application/json'}},
+                          {'status_code': 400}])
+      
+        node_dict = self.node.status()
+        self.assertDictEqual(status, vars(node_dict))
         self.assertIsInstance(node_dict, NodeStatus)
-        self.assertDictEqual(status, vars(node.status()))
-        self.assertIsNone(node_dict.foo) #Attribute doesn't exist 
+        self.assertIsNone(node_dict.foo) #Attribute doesn't exist
+        # Node failed
+        self.assertRaises(NodeCommandFailed, lambda: self.node.status()) 
     
-    def test_status_fail(self, m):
-        uri = 'status'
-        register_get_and_reply(m, uri, 
-                               reply_status=404, 
-                               reply_json={'message':'Impossible to retrieve status',
-                                           'status':0},
-                               reply_method='GET')
+    @http304
+    def test_reboot(self, m):
+        m.put('/reboot', [{'status_code': 200},
+                          {'status_code': 400}])
+    
+        self.assertIsNone(self.node.reboot())
+        self.assertRaises(NodeCommandFailed, lambda: self.node.reboot())
+    
+    @http304
+    def test_time_sync(self, m):
+        m.put('/time_sync', [{'status_code': 200},
+                             {'status_code': 400},
+                             {'status_code': 200}])
         
-        node = Node(meta=Meta(href='{}/{}'.format(url, uri)))
-        self.assertRaises(NodeCommandFailed, lambda: node.status())   
+        self.assertIsNone(self.node.time_sync())
+        self.assertRaises(NodeCommandFailed, lambda: self.node.time_sync())
+        # Some nodes do not have this attribute (i.e. virtual nodes)
+        self.del_cache_item('time_sync')
+        self.assertRaises(NodeCommandFailed, lambda: self.node.time_sync())
     
-    def test_go_online_offline_standby_lock_fail(self, m):
-        actions = ['go_online', 'go_offline', 'go_standby', 'lock_online',
-                   'lock_offline']
+    @http304
+    def test_reset_user_db(self, m):
+        m.put('/reset_user_db', [{'status_code': 200},
+                                 {'status_code': 400},
+                                 {'status_code': 200}])
         
-        for action in actions:
-            uri = action
-            
-            register_get_and_reply(m, uri, 
-                                   reply_status=404, 
-                                   reply_json={'details' : '{}'.format(action)}, 
-                                   reply_method='PUT')
-
-            node = Node(meta=Meta(href='{}/{}'.format(url, uri)))
-            self.assertRaises(NodeCommandFailed, lambda: getattr(node, action)())
-    
-    def test_go_online_offline_standby_lock_pass(self, m):
-        actions = ['go_online', 'go_offline', 'go_standby', 'lock_online',
-                   'lock_offline']
+        self.assertIsNone(self.node.reset_user_db())
+        self.assertRaises(NodeCommandFailed, lambda: self.node.reset_user_db())
         
-        for action in actions:
-            uri = action
-            register_get_and_reply(m, uri, 
-                                   reply_status=200, 
-                                   reply_method='PUT')
-
-            node = Node(meta=Meta(href='{}/{}'.format(url, uri)))
-            self.assertIsNone(getattr(node, action)())
+        # Some nodes do not have this attribute (i.e. virtual nodes)
+        self.del_cache_item('reset_user_db')
+        self.assertRaises(NodeCommandFailed, lambda: self.node.reset_user_db())
     
-    def test_reset_user_db_unsupported_node_fail(self, m):
-        uri = 'reset_user_db'
-        register_request(m, uri,
-                         json={'link':[
-                                        {
-                                         'href': '{}/{}'.format(url, uri),
-                                         'method': 'POST',
-                                         'rel': 'foo'
-                                        }
-                                       ]
-                               })
-        node = Node(meta=Meta(href='{}/{}'.format(url, uri)))
-        self.assertRaises(NodeCommandFailed, lambda: node.reset_user_db())
-       
-    def test_reset_user_db_fail(self, m):
-        uri = 'reset_user_db'
-        
-        register_get_and_reply(m, uri, 
-                               reply_status=404, 
-                               reply_json={'details': 'error'},
-                               reply_method='PUT')
-            
-        node = Node(meta=Meta(href='{}/{}'.format(url, uri)))
-        self.assertRaises(NodeCommandFailed, lambda: node.reset_user_db())
-    
-    def test_reset_user_db_pass(self, m):
-        uri = 'reset_user_db'
-        
-        register_get_and_reply(m, uri, 
-                               reply_status=200, 
-                               reply_method='PUT')
-    
-        node = Node(meta=Meta(href='{}/{}'.format(url, uri)))
-        self.assertIsNone(node.reset_user_db())
-       
-    def test_diagnostic_unsupported_node_fail(self, m):
-        uri = 'diagnostic'
-        register_request(m, uri,
-                         json={'link':[
-                                        {
-                                         'href': '{}/{}'.format(url, uri),
-                                         'method': 'POST',
-                                         'rel': 'foo'
-                                        }
-                                       ]
-                               })
-        node = Node(meta=Meta(href='{}/{}'.format(url, uri)))
-        self.assertRaises(NodeCommandFailed, lambda: node.diagnostic())
-    
-    def test_diagnostic_pass(self, m):
-        uri = 'diagnostic'
+    @http304
+    def test_diagnostics(self, m):
         
         diag = {'diagnostics': [
                     {'diagnostic': {'name': 'SNMP Monitoring', 'enabled': False}}, 
                     {'diagnostic': {'name': 'User defined', 'enabled': False}}, 
                     {'diagnostic': {'name': 'Syslog', 'enabled': False}}]}
         
-        register_get_and_reply(m, uri,
-                               reply_status=200,
-                               reply_json=diag, 
-                               reply_method='GET')
+        m.get('/diagnostic', [{'status_code': 200, 'json': diag,
+                               'headers': {'content-type': 'application/json'}},
+                              {'status_code': 400},
+                              {'status_code': 200}])
         
-        node = Node(meta=Meta(href='{}/{}'.format(url, uri)))
-        diagnostics = node.diagnostic()
-        self.assertIsInstance(diagnostics, list)
-        for diag in diagnostics:
+        d = self.node.diagnostic()
+        self.assertIsInstance(d, list)
+        for diag in d:
             self.assertIsInstance(diag, Diagnostic)
             
         # Check methods in diagnostics class
-        diagnostic = diagnostics[0]
+        diagnostic = d[0]
         self.assertEqual(diagnostic.name, 'SNMP Monitoring')
         self.assertTrue(diagnostic.state == False)
         diagnostic.enable()
         self.assertTrue(diagnostic.state == True)
         diagnostic.disable()
         self.assertTrue(diagnostic.state == False)
+        # SMC returned a fail
+        self.assertRaises(NodeCommandFailed, lambda: self.node.diagnostic())
+        # Not supported on this node type
+        self.del_cache_item('diagnostic')
+        self.assertRaises(NodeCommandFailed, lambda: self.node.diagnostic())
     
-    def test_send_diagnostic_fail(self, m):
-        uri = 'send_diagnostic'
-        register_get_and_reply(m, uri, 
-                               reply_status=400, 
-                               reply_json={'message': 'error send diag'}, 
-                               reply_method='POST')
+    @http304
+    def test_appliance_status(self, m):
         
-        node = Node(meta=Meta(href='{}/{}'.format(url, uri)))
-        self.assertRaises(NodeCommandFailed, lambda: node.send_diagnostic([]))       
+        #status = {'interface_statuses': {'interface_status': [{'status': 'Up'}], 
+        #          'hardware_statuses': {'hardware_statuses': [{'statuses': [], 'name': 'Database Version'}]}}}
+        status = {'interface_statuses': {'interface_status': [{'flow_control': 'AutoNeg: off Rx: off Tx: off', 'capability': 'Normal Interface', 'mtu': 1500, 'aggregate_is_active': False, 'status': 'Up', 'name': 'eth0_0', 'port': 'Copper', 'speed_duplex': '1000 Mb/s / Full / Automatic', 'interface_id': 0}, {'flow_control': 'AutoNeg: off Rx: off Tx: off', 'capability': 'Normal Interface', 'mtu': 1500, 'aggregate_is_active': False, 'status': 'Up', 'name': 'eth0_1', 'port': 'Copper', 'speed_duplex': '1000 Mb/s / Full / Automatic', 'interface_id': 1}, {'flow_control': 'AutoNeg: off Rx: off Tx: off', 'capability': 'Normal Interface', 'mtu': 1500, 'aggregate_is_active': False, 'status': 'Up', 'name': 'eth0_2', 'port': 'Copper', 'speed_duplex': '1000 Mb/s / Full / Automatic', 'interface_id': 2}, {'flow_control': 'AutoNeg: off Rx: off Tx: off', 'capability': 'Normal Interface', 'mtu': 1500, 'aggregate_is_active': False, 'status': 'Down', 'name': 'eth0_3', 'port': 'Copper', 'speed_duplex': 'Half / Automatic', 'interface_id': 3}]}, 'hardware_statuses': {'hardware_statuses': [{'name': 'Anti-Malware', 'items': [{'name': 'Database Version', 'statuses': []}, {'name': 'Last Update', 'statuses': []}, {'name': 'Library Version', 'statuses': []}, {'name': 'Database Update Status', 'statuses': []}]}, {'name': 'File Systems', 'items': [{'name': 'Root', 'statuses': [{'value': '600 MB', 'status': -1, 'sub_system': 'File Systems', 'param': 'Partition Size', 'label': 'Root'}]}, {'name': 'Data', 'statuses': [{'value': '6.2%', 'status': -1, 'sub_system': 'File Systems', 'param': 'Usage', 'label': 'Data'}, {'value': '1937 MB', 'status': -1, 'sub_system': 'File Systems', 'param': 'Size', 'label': 'Data'}]}, {'name': 'Spool', 'statuses': [{'value': '4.5%', 'status': -1, 'sub_system': 'File Systems', 'param': 'Usage', 'label': 'Spool'}, {'value': '9729 MB', 'status': -1, 'sub_system': 'File Systems', 'param': 'Size', 'label': 'Spool'}]}, {'name': 'Tmp', 'statuses': [{'value': '0.0%', 'status': -1, 'sub_system': 'File Systems', 'param': 'Usage', 'label': 'Tmp'}, {'value': '3942 MB', 'status': -1, 'sub_system': 'File Systems', 'param': 'Size', 'label': 'Tmp'}]}, {'name': 'Swap', 'statuses': [{'value': '0.0%', 'status': -1, 'sub_system': 'File Systems', 'param': 'Usage', 'label': 'Swap'}, {'value': '1887 MB', 'status': -1, 'sub_system': 'File Systems', 'param': 'Size', 'label': 'Swap'}]}]}, {'name': 'GTI Cloud', 'items': [{'name': 'Connection', 'statuses': []}, {'name': 'Status', 'statuses': []}]}, {'name': 'MLC Connection', 'items': []}, {'name': 'Web Filtering', 'items': [{'name': 'Cloud Connection', 'statuses': []}]}]}}
+        m.get('/appliance_status', [{'status_code': 200, 'json': status,
+                                     'headers': {'content-type': 'application/json'}},
+                                    {'status_code': 400}])
+        
+        result = self.node.appliance_status
+        self.assertIsInstance(result, ApplianceStatus)
+        for x in result.hardware_status:
+            self.assertIsInstance(x, HardwareStatus)
+            self.assertIsInstance(x.items, list)
+            self.assertIsNotNone(x.name)
+        for x in result.interface_status:
+            self.assertIsInstance(x, InterfaceStatus)
+            self.assertIsNotNone(x.name)
+            if x.items.interface_id == 0:
+                self.assertTrue(x.items.name == 'eth0_0')
+            
+        # Error returned from SMC
+        self.assertRaises(NodeCommandFailed, lambda: self.node.appliance_status)
     
-    def test_reboot_fail(self, m):
-        uri = 'reboot'
-        register_get_and_reply(m, uri, 
-                               reply_method='PUT', 
-                               reply_json={'message': 'error on reboot'},
-                               reply_status=400)
+    @http304
+    def test_ssh(self, m):
+        m.put('/ssh', [{'status_code': 200},
+                       {'status_code': 400},
+                       {'status_code': 200}])
+        self.assertIsNone(self.node.ssh())
+        self.assertRaises(NodeCommandFailed, lambda: self.node.ssh())
+        # Not supported on all nodes (virtual engines)
+        self.del_cache_item('ssh')
+        self.assertRaises(NodeCommandFailed, lambda: self.node.ssh())
     
-        node = Node(meta=Meta(href='{}/{}'.format(url, uri)))
-        self.assertRaises(NodeCommandFailed, lambda: node.reboot())
+    @http304
+    def test_sginfo(self, m):
+        pass
     
-    def test_reboot_pass(self, m):
-        uri = 'reboot'
-        register_get_and_reply(m, uri, 
-                               reply_method='PUT')
-        node = Node(meta=Meta(href='{}/{}'.format(url, uri)))
-        self.assertIsNone(node.reboot())
+    @http304
+    def test_change_ssh_pwd(self, m):
+        m.put('/change_ssh_pwd', [{'status_code': 200},
+                                  {'status_code': 400},
+                                  {'status_code': 200}])
+        
+        self.assertIsNone(self.node.change_ssh_pwd('pwd'))
+        self.assertDictEqual({'value': 'pwd'}, m.last_request.json())
+        
+        # Typically password requirements not met
+        self.assertRaises(NodeCommandFailed, lambda: self.node.change_ssh_pwd('pwd'))
+        self.del_cache_item('change_ssh_pwd')
+        # Not supported
+        self.assertRaises(NodeCommandFailed, lambda: self.node.change_ssh_pwd('pwd'))
     
-    #def test_sginfo_pass(self, m):
-    #    pass
+    @http304
+    def test_certificate_info(self, m):
     
-    #def test_sginfo_fail(self, m):
-    #    pass
-    
-    def test_ssh_pass(self, m):
-        uri = 'ssh'
-        
-        register_get_and_reply(m, uri, 
-                               reply_status=200, 
-                               reply_method='PUT')
-        
-        node = Node(meta=Meta(href='{}/{}'.format(url, uri)))
-        self.assertIsNone(node.ssh())
-    
-    def test_ssh_unsupported_node_fail(self, m):
-        uri = 'ssh'
-        register_request(m, uri,
-                         json={'link':[
-                                        {
-                                         'href': '{}/{}'.format(url, uri),
-                                         'method': 'POST',
-                                         'rel': 'foo'
-                                        }
-                                       ]
-                                })
-        node = Node(meta=Meta(href='{}/{}'.format(url, uri)))
-        self.assertRaises(NodeCommandFailed, lambda: node.ssh())
-        
-    def test_ssh_fail(self, m):
-        uri = 'ssh'
-        
-        register_get_and_reply(m, uri, 
-                               reply_status=400, 
-                               reply_json={'message': 'error in ssh'}, 
-                               reply_method='PUT')
-        
-        node = Node(meta=Meta(href='{}/{}'.format(url, uri)))
-        self.assertRaises(NodeCommandFailed, lambda: node.ssh())
-    
-    def test_change_ssh_pwd_unsupported_node_fail(self, m):
-        uri = 'change_ssh_pwd'
-        register_request(m, uri,
-                         json={'link':[
-                                           {
-                                            'href': '{}/{}'.format(url, uri),
-                                            'method': 'POST',
-                                            'rel': 'foo'
-                                            }
-                                           ]
-                                   })
-        node = Node(meta=Meta(href='{}/{}'.format(url, uri)))
-        self.assertRaises(NodeCommandFailed, lambda: node.change_ssh_pwd('pwd'))
-      
-    def test_change_ssh_pwd_fail(self, m):
-        uri = 'change_ssh_pwd'
-        
-        register_get_and_reply(m, uri, 
-                               reply_status=400, 
-                               reply_json={'message': 'error in change ssh'}, 
-                               reply_method='PUT')
-        
-        node = Node(meta=Meta(href='{}/{}'.format(url, uri)))
-        self.assertRaises(NodeCommandFailed, lambda: node.change_ssh_pwd('pwd'))
-        
-    def test_change_ssh_pwd_pass(self, m):
-        uri = 'change_ssh_pwd'
-        register_get_and_reply(m, uri, 
-                               reply_status=200, 
-                               reply_method='PUT')
-        
-        node = Node(meta=Meta(href='{}/{}'.format(url, uri)))
-        self.assertIsNone(node.change_ssh_pwd('pwd'))
-    
-    def test_time_sync_unsupported_node_fail(self, m):
-        uri = 'time_sync'
-        register_request(m, uri,
-                         json={'link':[
-                                        {
-                                         'href': '{}/{}'.format(url, uri),
-                                         'method': 'POST',
-                                         'rel': 'foo'
-                                        }
-                                       ]
-                               })
-        node = Node(meta=Meta(href='{}/{}'.format(url, uri)))
-        self.assertRaises(NodeCommandFailed, lambda: node.time_sync())
-    
-    def test_time_sync_fail(self, m):
-        uri = 'time_sync'
-        
-        register_get_and_reply(m, uri, 
-                               reply_status=400, 
-                               reply_json={'message': 'error in time sync'}, 
-                               reply_method='PUT')
-        
-        node = Node(meta=Meta(href='{}/{}'.format(url, uri)))
-        self.assertRaises(NodeCommandFailed, lambda: node.time_sync())
-     
-    def test_time_sync_pass(self, m):
-        uri = 'time_sync'
-        register_get_and_reply(m, uri, 
-                               reply_status=200, 
-                               reply_method='PUT')
-        
-        node = Node(meta=Meta(href='{}/{}'.format(url, uri)))
-        self.assertIsNone(node.time_sync())
-  
-    def test_certificate_info_pass(self, m):
-        uri = 'certificate_info'
-        
         cert = {'revocation_date': 0, 
                 'contactable_href': 'http://1.1.1.1', 
                 'expiration_date': 0, 
                 'serial_number': 0}
         
-        register_get_and_reply(m, uri, 
-                               reply_status=200, 
-                               reply_json=cert, 
-                               reply_method='GET')
+        m.get('/certificate_info', [{'status_code': 200, 'json': cert,
+                                    'headers': {'content-type': 'application/json'}}])
         
-        node = Node(meta=Meta(href='{}/{}'.format(url, uri)))
-        result = node.certificate_info()
-        self.assertDictEqual(result, cert)
+        result = self.node.certificate_info()
+        self.assertDictEqual(result, cert)                                                                                 
+                                              
+    @http304
+    def test_initial_contact(self, m):
+        m.post('/initial_contact', [{'status_code': 200, 'text': 'INITIAL_CONFIG',
+                                     'headers': {'content-type': 'text/plain'}},
+                                    {'status_code': 200, 'text': 'INITIAL_CONFIG',
+                                     'headers': {'content-type': 'application/octet-stream'}},
+                                    {'status_code': 200}])
+        # As text content
+        result = self.node.initial_contact()
+        self.assertEqual(result, 'INITIAL_CONFIG')
+        # As file
+        self.assertRaises(NodeCommandFailed, lambda: self.node.initial_contact(filename='/foo'))
+                         
+        # Doesn't exist for certain engines (virtual)
+        self.del_cache_item('initial_contact')
+        self.assertRaises(NodeCommandFailed, lambda: self.node.initial_contact())
     
+    @http304
+    def test_diagnostic(self, m):
+        m.post('/send_diagnostic', [{'status_code': 200},
+                                    {'status_code': 400}])
+        
+        diag = Diagnostic({'enabled': True, 'name': 'SNMP Monitoring'})
+        self.assertIsNone(self.node.send_diagnostic([diag]))
+        self.assertRaises(NodeCommandFailed, lambda: self.node.send_diagnostic([]))

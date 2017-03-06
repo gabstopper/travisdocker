@@ -1,85 +1,159 @@
 import unittest
-from smc import session as mysession
 import requests_mock
-from constants import url, api_key, register_request, register_get_and_reply
+from smc import session as mysession
+from smc.tests.constants import url
+from smc.elements.network import Alias
 from smc.core.engine import Engine, VirtualResource, InternalGateway,\
     InternalEndpoint
 from smc.core.interfaces import Interface, PhysicalInterface
-from smc.base.model import Meta
+from smc.base.model import Meta, Cache
 from smc.api.exceptions import UnsupportedEngineFeature,\
     UnsupportedInterfaceType, SMCConnectionError, EngineCommandFailed,\
     TaskRunFailed, LoadEngineFailed, CertificateError
-from smc.core.resource import RouteTable, Route, Routing, RoutingNode, Alias, Snapshot
+from smc.core.resource import Snapshot
+from smc.core.route import Routing, Antispoofing, Routes
 from smc.core.node import Node
 from smc.vpn.elements import VPNSite
-from smc.api.web import SMCResult
+from smc.tests.mocks import (mock_get_ospf_default_profile, 
+                             mock_search_get_first_log_server, 
+                             inject_mock_for_smc)
+
+import logging
+logging.getLogger()
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s %(levelname)s %(name)s.%(funcName)s: %(message)s')
+        
+def MockEngine(name='myengine'):
+    engine = Engine(name=name, meta=Meta(href='{}/engine'.format(url),
+                                         type='single_fw'))
+    engine._cache = Cache(engine, 
+                        {'name': 'myengine',
+                         'nodes': [{'firewall_node': {'activate_test': True,
+                                                      'engine_version': 'version 6.1 #17028',
+                                                      'name': 'test node 1',
+                                                      'nodeid': 1}}],
+                         'link': [{'href': '{}/internal_gateway'.format(url),
+                                   'rel': 'internal_gateway'},
+                                  {'href': '{}/nodes'.format(url),
+                                   'rel': 'nodes'},
+                                  {'href': '{}/permissions'.format(url),
+                                   'rel': 'permissions'},
+                                  {'href': '{}/blacklist'.format(url),
+                                   'rel': 'blacklist'},
+                                  {'href': '{}/flush_blacklist'.format(url),
+                                   'rel': 'flush_blacklist'},
+                                  {'href': '{}/add_route'.format(url),
+                                   'rel': 'add_route'},
+                                  {'href': '{}/antispoofing'.format(url),
+                                   'rel': 'antispoofing'},
+                                  {'href': '{}/alias_resolving'.format(url),
+                                   'rel' : 'alias_resolving'},
+                                  {'href': '{}/routing'.format(url),
+                                   'rel': 'routing'},
+                                  {'href': '{}/routing_monitoring'.format(url),
+                                   'rel': 'routing_monitoring'},
+                                  {'href': '{}/virtual_resources'.format(url),
+                                   'rel': 'virtual_resources'},
+                                  {'href': '{}/interfaces'.format(url),
+                                   'rel': 'interfaces'},
+                                  {'href': '{}/tunnel_interface'.format(url),
+                                   'rel': 'tunnel_interface'},
+                                  {'href': '{}/physical_interface'.format(url),
+                                   'rel': 'physical_interface'},
+                                  {'href': '{}/virtual_physical_interface'.format(url),
+                                   'rel': 'virtual_physical_interface'},
+                                  {'href': '{}/modem_interface'.format(url),
+                                   'rel': 'modem_interface'},
+                                  {'href': '{}/adsl_interface'.format(url),
+                                   'rel': 'adsl_interface'},
+                                  {'href': '{}/wireless_interface'.format(url),
+                                   'rel': 'wireless_interface'},
+                                  {'href': '{}/switch_physical_interface'.format(url),
+                                   'rel': 'switch_physical_interface'},
+                                  {'href': '{}/refresh'.format(url),
+                                   'rel': 'refresh'},
+                                  {'href': '{}/upload'.format(url),
+                                   'rel': 'upload'},
+                                  {'href': '{}/generate_snapshot'.format(url),
+                                   'rel': 'generate_snapshot'},
+                                  {'href': '{}/snapshots'.format(url),
+                                   'rel': 'snapshots'}]
+                         }, 'abc123456',                
+                        )
+    return engine
+
+def MockInternalGateway():
+    internal_gw = {'type': 'internal_gateway', 
+                   'name': 'testfw - Primary', 
+                   'href': '{}/internal_gateway'.format(url)}
+    gw = InternalGateway(meta=Meta(**internal_gw))
+    gw._cache = Cache(gw, 
+                 {'antivirus': False,
+                          'gateway_profile': 'http://172.18.1.150:8082/6.1/elements/gateway_profile/31',
+                          'link': [{'href': '{}/generate_certificate_ref'.format(url),
+                                    'method': 'POST',
+                                    'rel': 'generate_certificate'},
+                                   {'href': '{}/vpn_site'.format(url),
+                                    'method': 'GET',
+                                    'rel': 'vpn_site',
+                                    'type': 'vpn_site'},
+                                   {'href': '{}/internal_endpoint_ref'.format(url),
+                                    'method': 'GET',
+                                    'rel': 'internal_endpoint',
+                                    'type': 'internal_endpoint'},
+                                   {'href': '{}/gateway_certificate_ref'.format(url),
+                                    'method': 'GET',
+                                    'rel': 'gateway_certificate',
+                                    'type': 'gateway_certificate'},
+                                   {'href': '{}/gateway_certificate_request_ref'.format(url),
+                                    'method': 'GET',
+                                    'rel': 'gateway_certificate_request',
+                                    'type': 'gateway_certificate_request'}],
+                            'name': 'testfw - Primary'}, 'etag')
+    return gw
+
+def MockVirtualResource():
+    v = VirtualResource(meta=Meta(href='{}/virtual_resource'.format(url),
+                                  name='ve-1'))
+    v._cache = Cache(v, 
+                 {'allocated_domain_ref': url,
+                  'connection_limit': 0,
+                  'link': [],
+                  'name': 've-1',
+                  'show_master_nic': False,
+                  'vfw_id': 1},
+                     '"NjkwNjAyODExNA=="')
+    return v
 
 def raise_within(request, context):
     raise SMCConnectionError
-   
+  
 @requests_mock.Mocker()
 class EngineMocks(unittest.TestCase):
     
-    def setUp(self):
-        mysession.login(url, api_key)
-        
-    def tearDown(self):
-        mysession.logout()
-    
-    def test_engine_rename(self, m):
-        engine = Engine(name='test', meta=Meta(name='test', type='single_fw', href='{}/engine'.format(url)))
-        
-        engine._cache = ('etag', {'name': 'test',
-                                  'nodes': [{'firewall_node': {'activate_test': True,
-                                                                 'engine_version': 'version 6.1 #17028',
-                                                                 'name': 'test node 1',
-                                                                 'nodeid': 1}}],
-                                  'link': [{'href': '{}/internal_gateway'.format(url),
-                                            'rel': 'internal_gateway'},
-                                           {'href': '{}/nodes'.format(url),
-                                            'rel': 'nodes'}]})
-        # Make smc-python pull from engine cache json
-        register_request(m, 'engine', status_code=304)
-        register_request(m, 'engine', json={}, method='PUT')
-        # Internal gateway interception
-        register_request(m, 'internal_gateway', 
-                         json=[{'name': 'test - Primary', 
-                                'href': '{}/internal_gateway/5354'.format(url), 
-                                'type': 'internal_gateway'}])
-        
-        register_request(m, 'nodes', 
-                         json=[{'href':'{}/mynode'.format(url), 'type':'single_fw', 'name':'test node 1'}])
-       
-        # Set internal gateway cache 
-        engine.internal_gateway._cache = ('etag', {'name': 'test Primary'})
-        # Get internal gateway from cache
-        register_request(m, 'internal_gateway/5354', status_code=304)
-        # Return empty json for success on modify_attribute call
-        register_request(m, 'internal_gateway/5354', status_code=200, json={}, method='PUT')
-        # When engine.nodes called, return node json
-        register_request(m, 'mynode', status_code=200, json={'nodeid':1, 'name':'test'}, method='GET')
-        
-        engine.rename('bar')
-        self.assertTrue(engine.name, 'bar')
+    @classmethod
+    def setUpClass(cls):
+        """ 
+        Set up SMC Session object once per test class. Primary reason is
+        to load the Mock session object as smc.api.session._session since
+        this assumes we will not have a real connection.
+        """
+        super(EngineMocks, cls).setUpClass()
+        inject_mock_for_smc()
+        cls.engine = MockEngine()
+      
+    def del_cache_item(self, item):
+        self.engine.data['link'][:] = [d 
+                                       for d in self.engine.data['link'] 
+                                       if d.get('rel') != item]
         
     def test_engine_create(self, m):
         
-        # Log Server GET when log_server_ref is not provided
-        register_request(m, '{}/elements/log_server'.format(mysession.api_version), 
-                         json=[{'href': url}])
-        
+        log_server = mock_search_get_first_log_server(m)
         # OSPF Default Profile GET when profile not specified, returns META
-        register_request(m, '{}/elements/ospfv2_profile'.format(mysession.api_version),
-                         json=[{'name': 'Default OSPFv2 Profile', 
-                                'href': '{}/ospf'.format(url), 
-                                'type': 'ospfv2_profile'}])
-        # After META, follow on request gets full json to check attributes
-        register_request(m, 'ospf', 
-                         json={'system': True,
-                               'href': url})
+        mock_get_ospf_default_profile(m)
     
         engine = Engine.create(name='foo', 
-                               node_type='virtual_fw_node', 
+                               node_type='firewall_node', 
                                physical_interfaces=[{'virtual_physical_interface': {'aggregate_mode': 'none'}}],
                                nodes=2, 
                                domain_server_address=['1.1.1.1', '2.2.2.2'], 
@@ -88,108 +162,176 @@ class EngineMocks(unittest.TestCase):
                                default_nat=True, 
                                location_ref=url,
                                enable_ospf=True)
+
         self.assertEqual(engine['antivirus']['antivirus_enabled'], True)
         self.assertEqual(engine['default_nat'], True)
         self.assertEqual(engine['name'], 'foo')
         self.assertTrue(len(engine['nodes']) == 2)
         for node in engine['nodes']:
             for nodetype, _ in node.items():
-                self.assertEqual(nodetype, 'virtual_fw_node')
-        self.assertEqual(engine['log_server_ref'], url)
+                self.assertEqual(nodetype, 'firewall_node')
+        self.assertEqual(engine['log_server_ref'], log_server)
         self.assertEqual(engine['location_ref'], url)
         for dns in engine['domain_server_address']:
             self.assertIn(dns.get('value'), ['1.1.1.1', '2.2.2.2'])
         self.assertTrue(engine['dynamic_routing']['ospfv2'].get('enabled'))
         self.assertTrue(engine['dynamic_routing']['ospfv2'].get('ospfv2_profile_ref').startswith(url))
+    
+    def test_load_engine_with_pre61(self, m):
 
-    def test_permissions_pass(self, m):
-        uri = 'permissions'
+        # Force API version to <6.1
+        mysession._cache.api_version = 6.0
+        self.assertTrue(mysession._cache.api_version < 6.1)
+        
+        engine = Engine('myengine') # Reference engine we want
+        
+        valid_engine = {'name': 'myengine', 
+                        'href': '{}/1/engine'.format(url), 
+                        'type': 'single_fw'}
     
-        register_get_and_reply(m, uri, 
-                               reply_status=200, 
-                               reply_json={'granted_access_control_list': [], 
-                                           'cluster_ref': url}, 
-                               reply_method='GET')
-        engine = Engine(name='foo', meta=Meta(href='{}/{}'.format(url, uri)))
-        self.assertIsInstance(engine.permissions(), dict)
+        # Initial meta href returned from search.element_info_as_json
+        engine_j = []
+        
+        m.get('/elements?filter=myengine&exact_match=True',
+              [{'json': engine_j,
+                'headers': {'content-type': 'application/json'}}])
+        
+        # Search came up empty
+        self.assertRaises(LoadEngineFailed, lambda: engine.load())
+        
+        # Multiple search results found
+        engine_j.extend([{'name': 'test', 'href': 'blah', 'type': 'foo'},
+                         {'name': 'test2', 'href': 'bar', 'type': 'foo'}])
+        
+        self.assertRaises(LoadEngineFailed, lambda: engine.load())
+        
+        # Clear engine list
+        engine_j[:] = []
+        
+        # Valid engine
+        engine_no_nodes = {'engine_version': 'version 6.1 #17028',
+                           'name': 'myengine',
+                           'nat_definition': [],
+                           'nodes': [],
+                           'link': [{'href': '{}/nodes'.format(url),
+                                     'rel': 'nodes'}]}
     
-    def test_permissions_fail(self, m):
-        uri = 'permissions'
+        m.get('/1/engine', json=engine_no_nodes,
+              status_code=200, headers={'content-type': 'application/json'})
+
+        # Element returned but check to see if its actually and engine type.
+        engine_j.append(valid_engine)
+        self.assertRaises(LoadEngineFailed, lambda: engine.load())
         
-        register_get_and_reply(m, uri, 
-                               reply_status=200, 
-                               reply_json={}, 
-                               reply_method='GET')
-        engine = Engine(name='foo', meta=Meta(href='{}/{}'.format(url, uri)))
-        self.assertRaises(UnsupportedEngineFeature, lambda: engine.permissions())    
-    
-    def test_blacklist_pass(self, m):
-        uri = 'blacklist'
+        # Add valid node json to engine level
+        engine_no_nodes.get('nodes').append({'firewall_node': {'activate_test': True}})
+
+        engine = engine.load()
+
+        self.assertIsInstance(engine, Engine)
+        self.assertEqual(engine.version, engine_no_nodes.get('engine_version'))
+        self.assertEqual(engine.type, engine_j[0].get('type'))
         
-        register_get_and_reply(m, uri, 
-                               reply_status=201, 
-                               reply_method='POST')
-        engine = Engine(name='foo', meta=Meta(href='{}/{}'.format(url, uri)))
-        self.assertIsNone(engine.blacklist('1.1.1.2/32', '2.3.4.5/32'))
+        # Set node query
+        m.get('/nodes', json=[{'name': 'myengine node 1', 
+                              'href': '{}/firewall_node'.format(url), 
+                              'type': 'firewall_node'}],
+              headers={'content-type': 'application/json'})
         
-    def test_blacklist_fail(self, m):
-        uri = 'blacklist'
+        node = engine.nodes
+        self.assertIsInstance(node[0], Node)
+        self.assertEqual(node[0].name, 'myengine node 1')
+        self.assertEqual(node[0].type, 'firewall_node')
+        self.assertEqual(node[0].href, '{}/firewall_node'.format(url))
+ 
+    def test_engine_rename(self, m):
+        m.get('/engine', [{'status_code': 304}])
+        m.put('/engine', status_code=200)
         
-        register_get_and_reply(m, uri, 
-                               reply_status=400, 
-                               reply_json={"details":["Illegal object type"]}, 
-                               reply_method='POST')
-        engine = Engine(name='foo', meta=Meta(href='{}/{}'.format(url, uri)))
-        self.assertRaises(EngineCommandFailed, lambda: engine.blacklist('0.0.1.0', '2.3.4.5'))
-        
-    def test_blacklist_flush_pass(self, m):
-        uri = 'flush_blacklist'
-        register_get_and_reply(m, uri, 
-                               reply_status=204,
-                               reply_method='DELETE')
-        engine = Engine(name='foo', meta=Meta(href='{}/{}'.format(url, uri)))
-        self.assertIsNone(engine.blacklist_flush())
-        
-    def test_blacklist_flush_fail(self, m):
-        uri = 'flush_blacklist'
-        
-        register_get_and_reply(m, uri, 
-                               reply_status=500, 
-                               reply_json={'details':'Impossible to flush all blacklist entries'}, 
-                               reply_method='DELETE')
-        engine = Engine(name='foo', meta=Meta(href='{}/{}'.format(url, uri)))
-        self.assertRaises(EngineCommandFailed, lambda: engine.blacklist_flush())
+        # Internal gateway interception
+        m.get('/internal_gateway', [{'headers': {'content-type': 'application/json'},
+                                     'json': [{'name': 'test - Primary', 
+                                               'href': '{}/internal_gateway'.format(url), 
+                                               'type': 'internal_gateway'}]},
+                                    {'headers': {'content-type': 'application/json'},
+                                     'status_code': 200,
+                                     'json': {'system': False}}])
+     
+        # Return empty json for success on modify_attribute call
        
-    def test_add_route_pass(self, m):
-        uri = 'add_route'
-        register_get_and_reply(m, uri, 
-                               reply_status=200, 
-                               reply_method='POST')
-        engine = Engine(name='foo', meta=Meta(href='{}/{}'.format(url, uri)))
-        self.assertIsNone(engine.add_route('1.1.1.1', '1.2.3.4'))
+        m.get('/nodes', [{'headers': {'content-type': 'application/json'},
+                          'json': [{'href': '{}/nodes'.format(url),
+                                    'type': 'firewall_node',
+                                    'name': 'node1'}]
+                          },
+                         {'headers': {'content-type': 'application/json'},
+                          'json': {'system': False}}]) #Get nodes from engine.cache
         
-    def test_add_route_fail(self, m):
-        uri = 'add_route'
+        self.assertIsNone(self.engine.rename('foo'))
+        self.assertEqual(self.engine.name, 'foo')
+             
+    def test_permissions(self, m):
         
-        register_get_and_reply(m, uri, 
-                               reply_status=500, 
-                               reply_json={"details":["No route can be added"]},
-                               reply_method='POST')
-        engine = Engine(name='foo', meta=Meta(href='{}/{}'.format(url, uri)))
-        self.assertRaises(EngineCommandFailed, lambda: engine.add_route('1.1.1.1', '1.2.3.4'))
+        m.get('/engine', status_code=304)
+        m.get('/permissions',
+              [{'json': {'granted_access_control_list': [], 
+                         'cluster_ref': url},
+                'headers': {'content-type': 'application/json'}},
+               {'status_code': 200}])
+        
+        engine = self.engine.permissions
+        self.assertIsInstance(engine, list)
+        # Not supported engine
+        self.del_cache_item('permissions')
+        self.assertRaises(UnsupportedEngineFeature, lambda: self.engine.permissions())  
+    
+    def test_blacklist(self, m):
+        
+        m.get('/engine', status_code=304)
+        m.post('/blacklist', [{'status_code': 201},
+                              {'status_code': 400}])
+        
+        j = {'end_point1': {'address_mode': 'address', 
+                            'ip_network': '1.1.1.2/32', 'name': ''}, 
+             'duration': 3600, 
+             'end_point2': {'address_mode': 'address', 
+                            'ip_network': '2.3.4.5/32', 'name': ''}}
 
-    def test_antispoofing(self, m):
-        uri = 'antispoofing'
-        register_get_and_reply(m, uri, 
-                               reply_status=200, 
-                               reply_json={'test': 'foo'}, 
-                               reply_method='GET')
+        print(self.engine.blacklist('1.1.1.2/32', '2.3.4.5/32'))
+        self.assertDictEqual(j, m.last_request.json())
+        self.assertRaises(EngineCommandFailed, lambda: self.engine.blacklist('0.0.1.0', '2.3.4.5'))
         
-        engine = Engine(name='foo', meta=Meta(href='{}/{}'.format(url, uri)))
-        self.assertIsInstance(engine.antispoofing(), dict)
-                 
-    def test_virtual_resource_pass(self, m):
-        uri = 'virtual_resources'
+    def test_blacklist_flush(self, m):
+        
+        m.get('/engine', status_code=304)
+        m.delete('/flush_blacklist', [{'status_code': 204},
+                                      {'status_code': 500}])
+    
+        self.assertIsNone(self.engine.blacklist_flush())
+        self.assertRaises(EngineCommandFailed, lambda: self.engine.blacklist_flush())
+       
+    def test_add_route(self, m):
+        m.get('/engine', status_code=304)
+        m.post('/add_route', [{'status_code': 200},
+                              {'status_code': 500}])
+        
+        query = ['network=1.2.3.4', 'gateway=1.1.1.1']
+       
+        self.assertIsNone(self.engine.add_route('1.1.1.1', '1.2.3.4'))
+        
+        for qs in m.last_request.query.split('&'):
+            self.assertIn(qs, query)
+        self.assertRaises(EngineCommandFailed, lambda: self.engine.add_route('blah', 'foo'))
+      
+    def test_antispoofing(self, m):
+        m.get('/engine', status_code=304)
+        m.get('/antispoofing', json={'test': 'foo'},
+              headers={'content-type': 'application/json'})
+        
+        self.assertIsInstance(self.engine.antispoofing, Antispoofing)
+           
+    def test_virtual_resource(self, m):
+        m.get('/engine', status_code=304)
         
         virtual_res = [{'name': 've-2', 
                         'href': url, 
@@ -198,34 +340,20 @@ class EngineMocks(unittest.TestCase):
                         'href': url, 
                         'type': 'virtual_resource'}]
         
-        register_get_and_reply(m, uri, 
-                               reply_status=200,
-                               reply_method='GET',
-                               reply_json=virtual_res)
-        engine = Engine(name='foo', meta=Meta(href='{}/{}'.format(url, uri)))
+        m.get('/virtual_resources', [{'json': virtual_res,
+                                      'headers': {'content-type': 'application/json'},
+                                      'status_code': 200},
+                                     {'status_code': 200}])
+ 
         virtual_res_names = [res.get('name') for res in virtual_res]
-        for virtual in engine.virtual_resource.all():
+        for virtual in self.engine.virtual_resource.all():
             self.assertIsInstance(virtual, VirtualResource)
             self.assertIn(virtual.name, virtual_res_names)
-
-    def test_virtual_resource_fail(self, m):
-        uri = 'virtual_resources'
-        register_request(m, uri, 
-                         status_code=200, 
-                         json={'link':[
-                                        {
-                                         'href': '{}/{}'.format(url, uri),
-                                         'method': 'POST',
-                                         'rel': 'foo'
-                                        }
-                                      ]
-                              })
-        
-        engine = Engine(name='foo', meta=Meta(href='{}/{}'.format(url, uri)))
-        self.assertRaises(UnsupportedEngineFeature, lambda: engine.virtual_resource)
-    
-    def test_interface_pass(self, m):
-        uri = 'interfaces'
+        self.del_cache_item('virtual_resources')
+        self.assertRaises(UnsupportedEngineFeature, lambda: self.engine.virtual_resource.all())
+   
+    def test_interface(self, m):
+        m.get('/engine', status_code=304)
          
         interfaces = [{'type':'physical_interface', 
                        'href': url, 
@@ -234,20 +362,20 @@ class EngineMocks(unittest.TestCase):
                        'href': url,
                        'name': 'foo'}]
         
-        register_get_and_reply(m, uri, 
-                               reply_status=200,
-                               reply_method='GET',
-                               reply_json=interfaces)
-        
-        engine = Engine(name='foo', meta=Meta(href='{}/{}'.format(url, uri)))
-        for intf in engine.interface.all():
+        m.get('/interfaces', json=interfaces,
+              headers={'content-type': 'application/json'},
+              status_code=200)
+      
+        for intf in self.engine.interface.all():
             if intf.name == 'Interface 0':
                 self.assertIsInstance(intf, PhysicalInterface)
             else:
                 self.assertEqual(intf.name, 'foo')
                 self.assertIsInstance(intf, Interface)
-    
+
     def test_interfaces_pass(self, m):
+        m.get('/engine', status_code=304)
+        
         intf = ['tunnel_interface',
                 'physical_interface', 
                 'virtual_physical_interface']
@@ -259,21 +387,21 @@ class EngineMocks(unittest.TestCase):
                           {'name': 'Interface 2',
                            'href': url,
                            'type': interface}]
-            
-            register_get_and_reply(m, uri=interface, 
-                                   reply_status=200, 
-                                   reply_json=interfaces, 
-                                   reply_method='GET')
-            
-            engine = Engine(name='foo', meta=Meta(href='{}/{}'.format(url, interface)))
+
+            m.get('/{}'.format(interface),
+                  status_code=200,
+                  json=interfaces,
+                  headers={'content-type': 'application/json'})
+           
             names = [name.get('name') for name in interfaces]
-            pointer = getattr(engine, interface).all()
+            pointer = getattr(self.engine, interface).all()
             for intf in pointer:
                 # Each class should have 'typeof' attribute
                 self.assertEqual(type(intf).typeof, interface)
                 self.assertIn(intf.name, names)
     
     def test_interfaces_fail(self, m):
+        # Not supported by specific engine type
         intf = ['tunnel_interface',
                 'physical_interface', 
                 'virtual_physical_interface',
@@ -282,19 +410,14 @@ class EngineMocks(unittest.TestCase):
                 'adsl_interface',
                 'modem_interface']
         
+        engine = MockEngine()
         for interface in intf:
-            register_request(m, interface, 
-                             status_code=200, 
-                             json={'link':[
-                                           {
-                                            'href': '{}/{}'.format(url, interface),
-                                            'method': 'POST',
-                                            'rel': 'foo'
-                                            }
-                                           ]
-                                   })
-            engine = Engine(name='foo', meta=Meta(href='{}/{}'.format(url, interface)))
-            print(interface)
+            m.get('/engine', status_code=304)
+            
+            engine.data['link'][:] = [d 
+                                           for d in engine.data['link'] 
+                                           if d.get('rel') != interface]
+            m.get('/{}'.format(interface))
             self.assertRaises(UnsupportedInterfaceType, lambda: getattr(engine, interface))
 
     def test_unimplemented_interfaces(self, m):
@@ -305,24 +428,12 @@ class EngineMocks(unittest.TestCase):
         intf = ['modem_interface', 'adsl_interface', 'wireless_interface',
                 'switch_physical_interface']
         for interface in intf:
-            register_get_and_reply(m, interface,
-                                   reply_json=[],
-                                   reply_method='GET')
-            engine = Engine(name='foo', meta=Meta(href='{}/{}'.format(url, interface)))
-            self.assertIsInstance(getattr(engine, interface), list)
-           
-    def test_refresh_and_upload_fail(self, m):
-        #uri = 'refresh'
-        uris = ['refresh', 'upload']
-        for uri in uris:
-            register_get_and_reply(m, uri,
-                                   reply_status=400,  
-                                   reply_json={'details': '{} failed'.format(uri)}, 
-                                   reply_method='POST')
-            engine = Engine(name='foo', meta=Meta(href='{}/{}'.format(url, uri)))
-            self.assertRaises(TaskRunFailed, lambda: getattr(engine, uri)())
-      
-    def test_refresh_and_upload_pass(self, m): 
+            m.get('/engine', status_code=304)
+            m.get('/{}'.format(interface), json=[],
+                  headers={'content-type': 'application/json'})
+            self.assertIsInstance(getattr(self.engine, interface), list)
+        
+    def test_refresh_and_upload(self, m): 
         uris = ['refresh','upload']
     
         task = {'last_message': '', 
@@ -338,52 +449,43 @@ class EngineMocks(unittest.TestCase):
                 'follower': '{}/follower'.format(url)}
             
         for uri in uris:
-            register_get_and_reply(m, uri, 
-                                   reply_status=200, 
-                                   reply_json=task, 
-                                   reply_method='POST')
-            engine = Engine(name='foo', meta=Meta(href='{}/{}'.format(url, uri)))
-            follower = getattr(engine, uri)(wait_for_finish=False)
+            m.get('/engine', status_code=304)
+            m.post('/{}'.format(uri), [{'status_code': 200, 'json': task,
+                                        'headers': {'content-type': 'application/json'}},
+                                       {'status_code': 400}])
+            follower = getattr(self.engine, uri)(wait_for_finish=False)
             # Test generator and make sure it matches our follower link sent in
             self.assertEqual(next(follower), task.get('follower'))
+            # TaskRunFailed
+            self.assertRaises(TaskRunFailed, lambda: getattr(self.engine, uri)())
 
-    def test_generate_snapshot_pass_and_fail(self, m):
-        uri = 'generate_snapshot'
-        
-        register_get_and_reply(m, uri, 
-                               reply_status=200, 
-                               reply_text='snapshot_content', 
-                               reply_method='GET',
-                               reply_headers={'content-type': 'application/zip'})
-        
-        engine = Engine(name='foo', meta=Meta(href='{}/{}'.format(url, uri)))
+    def test_generate_snapshot(self, m):
+        m.get('/engine', status_code=304)
+        m.get('/generate_snapshot', text='snapshot_content',
+              headers={'content-type': 'application/zip'},
+              status_code=200)
+      
         # Fail, would raise IOError on web tier due to invalid directory
-        self.assertRaises(EngineCommandFailed, lambda: engine.generate_snapshot(filename='/'))
+        self.assertRaises(EngineCommandFailed, lambda: self.engine.generate_snapshot(filename='/'))
         # Success, results stored in smcresult.content attribute
-        result = engine.generate_snapshot('blah.txt').content
-        self.assertEqual(result.rsplit('/', 1)[-1], 'blah.txt')
+        self.assertIsNone(self.engine.generate_snapshot('blah.txt'))
     
-    def test_snapshot_pass(self, m):
-        uri = 'snapshots'
+    def test_snapshot(self, m):
         
-        result = [{'href': '{}/snapshot_class'.format(url),
+        m.get('/engine', status_code=304)
+        
+        result = [{'href': '{}/asnapshot'.format(url),
                    'name':'Master Engine Policy (2017-01-14 07:57:08)',
                    'type':'snapshot'}]
         snapshot = [{'name': 'Master Engine Policy (2017-01-14 07:57:08)', 
                      'type': 'snapshot', 
                      'href': url}]
         
-        register_get_and_reply(m, uri, 
-                               reply_status=200, 
-                               reply_json=result, 
-                               reply_method='GET')
-        # Return the snapshot as class
-        register_request(m, '{}/snapshot_class', 
-                         status_code=200, 
-                         json=snapshot)
-        
-        engine = Engine(name='foo', meta=Meta(href='{}/{}'.format(url, uri)))
-        snapshot_data = engine.snapshots()
+        m.get('/snapshots', json=result, status_code=200, headers={'content-type': 'application/json'})
+        m.get('/snapshot', json=snapshot, status_code=200, headers={'content-type': 'application/json'})
+       
+        snapshot_data = self.engine.snapshots()
+
         self.assertIsInstance(snapshot_data, list)
         self.assertIsInstance(snapshot_data[0], Snapshot)
         self.assertEqual(snapshot_data[0].name, snapshot[0].get('name'))
@@ -398,15 +500,10 @@ class EngineMocks(unittest.TestCase):
         snapshot = Snapshot(meta=Meta(**snapshot_j))
         self.assertEqual(snapshot.name, snapshot_j.get('name'))
         
-        register_request(m, uri, 
-                         status_code=200, 
-                         json={'link':[{
-                                        'href': '{}/content'.format(url),
-                                        'method': 'POST',
-                                        'rel': 'content'
-                                        }]
-                                }, 
-                         )
+        m.get('/snapshot', status_code=200,
+              json={'link': [{'href': '{}/content'.format(url),
+                              'rel': 'content'}]},
+              headers={'content-type': 'application/json'})
     
         full_snapshot = {'upload_time': '2017-01-14T13:57:08Z', 
                          'link': [{'href': url, 
@@ -422,197 +519,95 @@ class EngineMocks(unittest.TestCase):
                          'name': 'Master Engine Policy', 
                          'uploader': 'dev'}
         
-        register_request(m, 'content', 
-                         status_code=200, 
-                         json=full_snapshot)
+        m.get('/content', json=full_snapshot, status_code=200,
+              headers={'content-type': 'application/json'})
         
         self.assertRaises(EngineCommandFailed, lambda: snapshot.download(filename='/'))
         smcresult = snapshot.download()
         # Without filename specific, default save to local directory, use snapshot.name.zip
-        self.assertEqual(smcresult.content.rsplit('/', 1)[-1], '{}.zip'.format(snapshot.name))
-    
-    def test_load_engine_with_pre61(self, m):
-        # This will follow the same branch for smc version >=6.1 also
-        orig_version = mysession.api_version
-        
-        # Force API version to <6.1
-        mysession._cache.api_version = 6.0
-        self.assertTrue(mysession._cache.api_version < 6.1)
-        
-        engine = Engine('foo') # Reference engine we want
-        
-        valid_engine = {'name': 'foo', 
-                        'href': '{}/foo'.format(url), 
-                        'type': 'virtual_fw'}
-        # Initial meta href returned from search.element_info_as_json
-        engine_j = []
-    
-        # Get past initial generic search by name; uses search.element_info_as_json
-        register_request(m, '{}/elements?filter=foo&exact_match=True'.format(orig_version), 
-                         json=engine_j)
-        
-        # Return engine json structure
-        engine_load_no_nodes = {'engine_version': 'version 6.1 #17028',
-                                'name': 'foo',
-                                'nat_definition': [],
-                                'nodes': [],
-                                'link': [{'href': '{}/nodes'.format(url),
-                                          'rel': 'nodes'}]}
-    
-        # Once above json is returned, follow on query comes to URL specified in href
-        register_request(m, 'foo', 
-                         status_code=200, 
-                         json=engine_load_no_nodes)
-        # No nodes, simulates no results on SMC <6.1
-        self.assertRaises(LoadEngineFailed, lambda: engine.load())
-        engine_j.append(valid_engine) # Simulates non-engine type (no 'nodes' dict)
-        self.assertRaises(LoadEngineFailed, lambda: engine.load())
-        
-        # Onto valid
-        # Add valid node json to engine level
-        engine_load_no_nodes.get('nodes').append({'virtual_fw_node': {'activate_test': True}})
-        engine = engine.load()
-        self.assertIsInstance(engine, Engine)
-        self.assertEqual(engine.version, engine_load_no_nodes.get('engine_version'))
-        self.assertEqual(engine.type, engine_j[0].get('type'))
-        
-        # Set node query, simulates called def nodes()
-        register_request(m, 'nodes', 
-                         json=engine_j)
-        node = engine.nodes
-        self.assertIsInstance(node, list)
-        self.assertIsInstance(node[0], Node) 
-    
+        self.assertIsNone(smcresult) 
 
 @requests_mock.Mocker()
 class InternalGatewayMocks(unittest.TestCase):
     
-    def setUp(self):
-        mysession.login(url, api_key)
-        
-    def tearDown(self):
-        mysession.logout()
-    
-    def meta(self, uri):
-        internal_gw = {'type': 'internal_gateway', 
-                       'name': 'testfw - Primary', 
-                       'href': '{}/{}'.format(url, uri)}
-        
-        gateway = InternalGateway(meta=Meta(**internal_gw))
-        self.assertIsInstance(gateway, InternalGateway)
-        return gateway
-    
-    def cache(self):
-        return ('etag', {'antivirus': False,
-                         'gateway_profile': 'http://172.18.1.150:8082/6.1/elements/gateway_profile/31',
-                         'link': [{'href': '{}/generate_certificate_ref'.format(url),
-                                   'method': 'POST',
-                                   'rel': 'generate_certificate'},
-                                  {'href': '{}/vpn_site'.format(url),
-                                   'method': 'GET',
-                                   'rel': 'vpn_site',
-                                   'type': 'vpn_site'},
-                                  {'href': '{}/internal_endpoint_ref'.format(url),
-                                   'method': 'GET',
-                                   'rel': 'internal_endpoint',
-                                   'type': 'internal_endpoint'},
-                                  {'href': '{}/gateway_certificate_ref'.format(url),
-                                   'method': 'GET',
-                                   'rel': 'gateway_certificate',
-                                   'type': 'gateway_certificate'},
-                                  {'href': '{}/gateway_certificate_request_ref'.format(url),
-                                   'method': 'GET',
-                                   'rel': 'gateway_certificate_request',
-                                   'type': 'gateway_certificate_request'}],
-                         'name': 'testfw - Primary'})
+    @classmethod
+    def setUpClass(cls):
+        """ 
+        Set up SMC Session object once per test class. Primary reason is
+        to load the Mock session object as smc.api.session._session since
+        this assumes we will not have a real connection.
+        """
+        super(InternalGatewayMocks, cls).setUpClass()
+        inject_mock_for_smc()
+        cls.gw = MockInternalGateway()
     
     def test_internal_gateway_fail(self, m):
-        uri = 'internal_gateway'
         
-        register_get_and_reply(m, uri, 
-                               reply_status=200, 
-                               reply_json={},
-                               reply_method='GET')
+        m.get('/engine', status_code=304)
+        m.get('/internal_gateway', [{'status_code': 200, 'headers': {'content-type': 'application/json'},
+                                     'json': [{'type': self.gw.meta.type, 
+                                               'name': self.gw.meta.name, 
+                                               'href': self.gw.meta.href}]
+                                     }
+                                    ])
+        engine = MockEngine()
+       
+        internal_gateway = engine.internal_gateway
+        self.assertIsInstance(internal_gateway, InternalGateway)
+        self.assertEqual(internal_gateway.name, 'testfw - Primary')
         
-        engine = Engine(name='foo', meta=Meta(href='{}/{}'.format(url, uri)))
+        engine.data['link'][:] = [d 
+                                  for d in engine.data['link'] 
+                                  if d.get('rel') != 'internal_gateway']
         self.assertRaises(UnsupportedEngineFeature, lambda: engine.internal_gateway)
-    
-    def test_internal_gateway_pass(self, m):
-        uri = 'internal_gateway'
         
-        gw = [{'name': 'sg_vm_vpn', 
-               'type': 'internal_gateway', 
-               'href': url}]
-        
-        register_get_and_reply(m, uri, 
-                               reply_status=200,
-                               reply_method='GET',
-                               reply_json=gw)
-        
-        engine = Engine(name='sg_vm', meta=Meta(href='{}/{}'.format(url, uri)))
-        self.assertIsInstance(engine.internal_gateway, InternalGateway)
-        self.assertEqual(engine.internal_gateway.name, 'sg_vm_vpn')
-    
     def test_vpn_site(self, m):
         
-        gateway = self.meta('vpn_site')
-        gateway._cache = self.cache()
-    
-        register_request(m, 'vpn_site', status_code=304)
-        res = gateway.vpn_site
+        m.get('/internal_gateway', status_code=304)
+        
+        res = self.gw.vpn_site
         self.assertIsInstance(res, VPNSite)
         self.assertEqual(res.href, '{}/vpn_site'.format(url))
     
     def test_internal_endpoint(self, m):
         
-        gateway = self.meta('internal_endpoint')
-        gateway._cache = self.cache()
-    
-        register_request(m, 'internal_endpoint', status_code=304)
-        res = gateway.internal_endpoint
+        m.get('/internal_gateway', status_code=304)
+        res = self.gw.internal_endpoint
         self.assertIsInstance(res, InternalEndpoint)
         self.assertEqual(res.href, '{}/internal_endpoint_ref'.format(url))
         
         endpoint = {'name': '1.1.1.1', 
                     'href': url, 
                     'type': 'internal_endpoint'}
-        register_request(m, 'internal_endpoint_ref', 
-                         json=[endpoint])
+       
+        m.get('/internal_endpoint_ref', json=[endpoint],
+              headers={'content-type': 'application/json'})
+        
         list_internal_endpoints = res.all()
         self.assertIsInstance(list_internal_endpoints, list)
         self.assertEqual(list_internal_endpoints[0].name, '1.1.1.1')
-         
+       
     def test_gateway_certificate(self, m):
         
-        gateway = self.meta('gateway_certificate')
-        gateway._cache = self.cache()
-        
-        register_request(m, 'gateway_certificate', status_code=304)
-        register_request(m, 'gateway_certificate_ref', 
-                         json={})
-        self.assertIsInstance(gateway.gateway_certificate(), list)
+        m.get('/internal_gateway', status_code=304)
+        m.get('/gateway_certificate_ref', json={}, headers={'content-type': 'application/json'})
+        self.assertIsInstance(self.gw.gateway_certificate(), list)
     
     def test_gateway_certificate_request(self, m):
         
-        gateway = self.meta('gateway_certificate_request')
-        gateway._cache = self.cache()
+        m.get('/internal_gateway', status_code=304)
+        m.get('/gateway_certificate_request_ref', json={}, headers={'content-type': 'application/json'})
+        self.assertIsInstance(self.gw.gateway_certificate_request(), list)
         
-        register_request(m, 'gateway_certificate_request', status_code=304)
-        register_request(m, 'gateway_certificate_request_ref', json={})
-        self.assertIsInstance(gateway.gateway_certificate_request(), list)
     
     def test_generate_certificate(self, m):
         
-        gateway = self.meta('generate_certificate')
-        gateway._cache = self.cache()
-        
-        register_request(m, 'generate_certificate', status_code=304)
-        register_request(m, 'generate_certificate_ref',
-                         json={'details': 'failed'},
-                         method='POST',
-                         status_code=500)
+        m.get('/internal_gateway', status_code=304)
+        m.post('/generate_certificate_ref', json={'details': 'failed'}, 
+              headers={'content-type': 'application/json'},
+              status_code=400)
         class cert: pass
-        self.assertRaises(CertificateError, lambda: gateway.generate_certificate(cert()))
+        self.assertRaises(CertificateError, lambda: self.gw.generate_certificate(cert()))
 
 @requests_mock.Mocker()
 class VirtualResourceMocks(unittest.TestCase):
@@ -620,67 +615,49 @@ class VirtualResourceMocks(unittest.TestCase):
     Tests engine level aliases
     References classes in smc.core.resources
     """
-    def setUp(self):
-        mysession.login(url, api_key)
-        
-    def tearDown(self):
-        mysession.logout()
-    
-    def cache(self):
-        return ('"NjkwNjAyODExNA=="', {'allocated_domain_ref': url,
-                                       'connection_limit': 0,
-                                       'link': [],
-                                       'name': 've-1',
-                                       'show_master_nic': False,
-                                       'vfw_id': 1})
+    @classmethod
+    def setUpClass(cls):
+        """ 
+        Set up SMC Session object once per test class. Primary reason is
+        to load the Mock session object as smc.api.session._session since
+        this assumes we will not have a real connection.
+        """
+        super(VirtualResourceMocks, cls).setUpClass()
+        inject_mock_for_smc()
+        cls.virt = MockVirtualResource()
       
     def test_create_virtual_resource(self, m):
         
-        register_request(m, '{}/elements?exact_match=True&filter_context=admin_domain&filter=Shared+Domain'
-                         .format(mysession.api_version), 
-                         json=[{"result":[{"href":"{}/admin_domain/1".format(url),
+        m.get('/elements?exact_match=True&filter_context=admin_domain&filter=Shared+Domain',
+              json=[{"result":[{"href":"{}/admin_domain/1".format(url),
                                            "name":"Shared Domain",
                                            "type":"admin_domain"}]}])
         
-        register_request(m, 'virtual_resource', 
-                         status_code=200, 
-                         json=[], 
-                         method='POST')
+        m.post('/virtual_resource', status_code=200, json=[],
+               headers={'Location': '{}'.format(url)})
+        self.assertTrue(self.virt.create(name='virtual_fw', vfw_id=10).startswith('http'))
         
-        resource = VirtualResource(meta=Meta(href='{}/virtual_resource'.format(url)))
-        self.assertIsInstance(resource.create(name='virtual_fw', vfw_id=10), SMCResult)
-    
     def test_class_attributes(self, m):
-        # Simulate loading an existing VE from an engine reference
-        resource = VirtualResource(meta=Meta(name='ve-1', href='{}/virtual_resource'.format(url)))
-        self.assertEqual(resource.name, 've-1')
-    
-        # When accessing virtual resource from engine view, this is retrieved via
-        # engine.virtual_resource and will show an abbreviated version from the master
-        # engine view. You can view the entire VE engine json by loading as Engine(ve).
-        resource._cache = self.cache()
-        
-        # Catch call to cache and return 304 (already have current)
-        register_request(m, 'virtual_resource', status_code=304)                   
-        self.assertDictEqual(resource.describe(), resource._cache[1])
-        self.assertEqual(resource.vfw_id, 1)
-        
+      
+        self.assertEqual(self.virt.name, 've-1')
+        m.get('/virtual_resource', status_code=304)
+        self.assertDictEqual(self.virt.describe(), self.virt.data)
+        self.assertEqual(self.virt.vfw_id, 1)
+       
     def test_all(self, m):
-        
-        resource = VirtualResource(meta=Meta(href='{}/virtual_resource'.format(url)))
-        
+       
         # Call to all returns meta data returned from SMC
         json = [{'name':'ve-8', 'href':'{}/virtual_resource/697'.format(url), 'type':'virtual_resource'},
                 {'name':'ve-1', 'href':'{}/virtual_resource/690'.format(url), 'type':'virtual_resource'}]
         
-        register_request(m, 'virtual_resource', 
-                         status_code=200, 
-                         json=json)
+        m.get('/virtual_resource', status_code=200, json=json,
+              headers={'content-type': 'application/json'})
+       
         names = [name.get('name') for name in json]
         
-        for res in resource.all():
+        for res in self.virt.all():
             self.assertIn(res.name, names)
-            self.assertIsInstance(res, VirtualResource)
+            self.assertIsInstance(res, VirtualResource)   
        
 @requests_mock.Mocker()
 class AliasMocks(unittest.TestCase):
@@ -688,26 +665,29 @@ class AliasMocks(unittest.TestCase):
     Tests engine level aliases
     References classes in smc.core.resources
     """
-    def setUp(self):
-        mysession.login(url, api_key)
-        
-    def tearDown(self):
-        mysession.logout()
-
+    @classmethod
+    def setUpClass(cls):
+        """ 
+        Set up SMC Session object once per test class. Primary reason is
+        to load the Mock session object as smc.api.session._session since
+        this assumes we will not have a real connection.
+        """
+        super(AliasMocks, cls).setUpClass()
+        inject_mock_for_smc()
+    
     def test_alias_pass(self, m):
         # All engine types have aliases
-        uri = 'alias_resolving'
         
+        engine = MockEngine()
         # First GET will return the meta JSON
-        alias = [{'cluster_ref': 'http://172.18.1.150:8082/6.1/elements/fw_cluster/116', 
+        alias = [{'cluster_ref': '{}/1'.format(url), 
                   'resolved_value': ['1.1.1.1'], 
                   'alias_ref': '{}/alias'.format(url)}]
         
-        register_get_and_reply(m, uri, 
-                               reply_status=200, 
-                               reply_json=alias, 
-                               reply_method='GET')
-        
+        m.get('/engine', status_code=304)
+        m.get('/alias_resolving', status_code=200, json=alias,
+              headers={'content-type': 'application/json'})
+       
         # Second request will return the Alias JSON
         alias_resolved = {'name': '$$ Valid DHCP Servers for Mobile VPN clients', 
                           'comment': 'DHCP servers',
@@ -719,17 +699,13 @@ class AliasMocks(unittest.TestCase):
                                     'rel': 'search_category_tags_from_element'}]
                           }
         
-        register_request(m, 'alias', 
-                         status_code=200, 
-                         json=alias_resolved)
-        
-        engine = Engine(name='foo', meta=Meta(href='{}/{}'.format(url, uri)))
+        m.get('/alias', status_code=200, json=alias_resolved,
+              headers={'content-type': 'application/json'})
+      
         for a in engine.alias_resolving():
             self.assertIsInstance(a, Alias)
-            self.assertEqual(a.href, '{}/alias'.format(url))
             self.assertIn('1.1.1.1', a.resolved_value)
             self.assertEqual(a.name, '$$ Valid DHCP Servers for Mobile VPN clients')
-            self.assertEqual(a.resolve(), 'resolve')
 
 @requests_mock.Mocker()
 class RouteMocks(unittest.TestCase):
@@ -739,14 +715,17 @@ class RouteMocks(unittest.TestCase):
     engine.routing_monitoring()
     References classes in smc.core.resources
     """
-    def setUp(self):
-        mysession.login(url, api_key)
-        
-    def tearDown(self):
-        mysession.logout()
+    @classmethod
+    def setUpClass(cls):
+        """ 
+        Set up SMC Session object once per test class. Primary reason is
+        to load the Mock session object as smc.api.session._session since
+        this assumes we will not have a real connection.
+        """
+        super(RouteMocks, cls).setUpClass()
+        inject_mock_for_smc()
 
-    def test_routing_pass(self, m):
-        uri = 'routing'
+    def test_routing(self, m):
         
         route = {'routing_node':
                     [{'exclude_from_ip_counting': False,
@@ -769,35 +748,29 @@ class RouteMocks(unittest.TestCase):
                                         'routing_node': []}],
                         }]
                  }
-                
-        register_get_and_reply(m, uri, 
-                               reply_status=200, 
-                               reply_json=route, 
-                               reply_method='GET')
+         
+        m.get('/routing', status_code=200, json=route,
+              headers={'content-type': 'application/json'})       
+        m.get('/engine', status_code=304)
         
-        
-        engine = Engine(name='foo', meta=Meta(href='{}/{}'.format(url, uri)))
+        engine = MockEngine()
         self.assertIsInstance(engine.routing, Routing)
         for route in engine.routing.all():
-            self.assertIsInstance(route, RoutingNode)
+            self.assertIsInstance(route, Routing)
             self.assertEqual(route.name, 'Interface 0')
-            self.assertIsInstance(route.describe(), dict)
-            self.assertIn('172.18.1.0/24', route.network)
    
     def test_routing_monitoring_fail(self, m):
         # Timeout when connecting to node
-        uri = 'routing_monitoring'
-        register_get_and_reply(m, uri, 
-                               reply_status=200, 
-                               reply_json=raise_within, 
-                               reply_method='GET')
-        engine = Engine(name='foo', meta=Meta(href='{}/{}'.format(url, uri)))
-        self.assertIsInstance(engine.routing_monitoring, list)
-        self.assertTrue(len(engine.routing_monitoring) == 0)
+        m.get('/routing_monitoring', status_code=200, json=raise_within)
+        m.get('/engine', status_code=304)
+
+        engine = MockEngine()
+        self.assertRaises(EngineCommandFailed, lambda: engine.routing_monitoring)
+        #self.assertIsInstance(engine.routing_monitoring, list)
+        #self.assertTrue(len(engine.routing_monitoring) == 0)
     
     def test_routing_monitoring_pass(self, m):
-        uri = 'routing_monitoring'
-        
+       
         spoof = {'routing_monitoring_entry': [{
                                           'cluster_ref': url,
                                           'dst_if': 1,
@@ -806,16 +779,16 @@ class RouteMocks(unittest.TestCase):
                                           'route_network': '0.0.0.0',
                                           'route_type': 'Static',
                                           'src_if': -1}]}
-        register_get_and_reply(m, uri, 
-                               reply_status=200, 
-                               reply_json=spoof, 
-                               reply_method='GET')
-        engine = Engine(name='foo', meta=Meta(href='{}/{}'.format(url, uri)))
-        self.assertIsInstance(engine.routing_monitoring, RouteTable)
+        m.get('/routing_monitoring', status_code=200, json=spoof,
+              headers={'content-type': 'application/json'})
+        m.get('/engine', status_code=304)
+        
+        engine = MockEngine()
+        self.assertIsInstance(engine.routing_monitoring, Routes)
         for route in engine.routing_monitoring.all():
-            self.assertIsInstance(route, Route)
-            self.assertEqual(route.gateway, '10.0.0.1')
-            self.assertEqual(route.network, '0.0.0.0/0')
-            self.assertEqual(route.type, 'Static')
+            self.assertEqual(route.route_gateway, '10.0.0.1')
+            self.assertEqual(route.route_network, '0.0.0.0')
+            self.assertEqual(route.route_type, 'Static')
             self.assertEqual(route.src_if, -1)
             self.assertEqual(route.dst_if, 1)
+    

@@ -3,35 +3,31 @@ Created on Nov 13, 2016
 
 @author: davidlepage
 '''
-import os
 import unittest
 import time
 from smc import session
-#from .constants import url, api_key, verify
+#from smc.tests.constants import url, api_key, verify
 from smc.base.util import save_to_file
 from smc.core.engine import Engine
 from smc.api.exceptions import LoadEngineFailed, NodeCommandFailed,\
     TaskRunFailed, LicenseError, EngineCommandFailed
-from smc.core.resource import RouteTable, RoutingNode, Route
-from smc.core.node import NodeStatus, ApplianceStatus
+from smc.core.route import Routing, Routes
+from smc.core.node import NodeStatus, HardwareStatus,\
+    InterfaceStatus
 from smc.actions.search import element_by_href_as_json
 from smc.api.common import SMCRequest
 from smc.core.engines import Layer3Firewall
-from constants import url, api_key
-
 
 # !! This requires a validly deployed firewall to test as it will test options within the node and 
 # a couple engine level methods (upload/refresh) as well.
 # In addition, it will test node when the node is not ready to verify the exception catching
 running_firewall = 've-1' #For these tests to succeed, this is a virtual FW
 engine = None
-#not_running_firewall = 'smc-python-api-nodetest'
 engine_not_initialized = None
 
-@unittest.skipIf(os.environ.get('TRAVIS'), 'Skipping while running in Travis CI')
 class Test(unittest.TestCase):
     def setUp(self):
-        session.login(url=url, api_key=api_key, 
+        session.login(url='http://172.18.1.150:8082', api_key='EiGpKD4QxlLJ25dbBEp20001', 
                       verify=True)
         try:
             global engine
@@ -76,7 +72,7 @@ class Test(unittest.TestCase):
         # Return route table
         routes = engine.routing_monitoring
         if routes:
-            self.assertIsInstance(engine.routing_monitoring, RouteTable)
+            self.assertIsInstance(engine.routing_monitoring, Routes)
         else:
             self.assertTrue(len(routes) == 0)
         
@@ -108,8 +104,7 @@ class Test(unittest.TestCase):
         # Verify policy upload
         task = engine.upload(policy=None)
         href = next(task)
-        #print("Call next one more time...% s" % next(gen)) #StopIteration
-        #gen.next() #Fails on py3
+        
         self.assertRegexpMatches(href, r'^http')
         d = SMCRequest(href=href).delete()
         self.assertEqual(204, d.code)
@@ -140,13 +135,12 @@ class Test(unittest.TestCase):
     
     def test_engine_generate_snapshot(self):
         # Generate snapshot will save filename in SMCResult.content
-        snapshot = engine.generate_snapshot().content
-        #print("snapshot: %s" % snapshot)
-        self.assertIsNotNone(snapshot)
+        self.assertIsNone(engine.generate_snapshot())
     
     def test_engine_generate_snapshot_failure(self):
-        snapshot = engine_not_initialized.generate_snapshot()
-        self.assertIsNotNone(snapshot.msg)
+        with self.assertRaises(EngineCommandFailed):
+            engine_not_initialized.generate_snapshot()
+        
         
     def test_node_fetch_license_fail(self):
         # Fetch is not available on some node types (virtual)
@@ -204,14 +198,19 @@ class Test(unittest.TestCase):
             self.assertRaises(NodeCommandFailed, lambda: node.go_online())
     
     def test_node_appliance_status_success(self): #VE-1
-        self.assertIsInstance(engine.nodes[0].appliance_status(), ApplianceStatus)
-        appstatus = engine.nodes[0].appliance_status()
-        self.assertTrue(len(appstatus.interface_statuses) == 0)
-        self.assertTrue(len(appstatus.hardware_statuses) == 0)
+        for node in engine.nodes:
+            for status in node.appliance_status.hardware_status:
+                self.assertIsInstance(status, HardwareStatus)
+                self.assertIsNotNone(status.name)
+                self.assertIsInstance(status.items, list)
+            for status in node.appliance_status.interface_status:
+                self.assertIsInstance(status, InterfaceStatus)
+                self.assertIsNotNone(status.name)
+                print('type of interface: %s' % type(status.items))
                                    
     def test_node_appliance_status_fail(self):
         # Fails for virtual engines
-        self.assertRaises(NodeCommandFailed, lambda: engine_not_initialized.nodes[0].appliance_status())
+        self.assertRaises(NodeCommandFailed, lambda: engine_not_initialized.nodes[0].appliance_status)
 
     def test_node_status_success(self):
         # Return node status
@@ -259,24 +258,19 @@ class Test(unittest.TestCase):
         self.assertTrue(len(snapshots)>0)
         self.assertTrue(snapshots[0].name is not None)
         # No filename provided for download
-        self.assertIsNotNone(snapshots[0].download().content)
+        self.assertIsNone(snapshots[0].download())
         # Failed download, incorrect directory
         self.assertRaises(EngineCommandFailed, lambda: snapshots[0].download(filename='/'))
     
     def test_engine_routing_all(self):
         # Test getting routes back
         routes = engine.routing.all()
-        self.assertIsInstance(routes[0], RoutingNode)
-        self.assertIsInstance(routes[0].network, list)
-        self.assertIsInstance(routes[0].describe(), dict)
-    
-    def test_engine_route_view(self):
-        routes = engine.routing_monitoring.all()
+        self.assertIsInstance(routes, list)
         for route in routes:
-            # Make sure attribute access works
-            route.src_if, route.dst_if, route.network, route.gateway, route.type
-            # And type
-            self.assertIsInstance(route, Route)      
+            self.assertIsInstance(route, Routing)
+            if route.name == 'Interface 1':
+                for r in route.all():
+                    self.assertEqual(r.ip, u'10.29.248.9/30')
         
 if __name__ == "__main__":
     #import sys;sys.argv = ['', 'Test.testName']

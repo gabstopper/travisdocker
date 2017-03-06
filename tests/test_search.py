@@ -4,27 +4,25 @@ Created on Jul 10, 2016
 @author: davidlepage
 '''
 import unittest
-from constants import url, api_key, verify
+from smc.tests.constants import url, api_key, verify
 from smc import session
 from smc.elements.network import Host
 import smc.actions
 from smc.api.exceptions import SMCConnectionError, UnsupportedEntryPoint
 from smc.api.web import SMCResult
 from smc.api.common import fetch_href_by_name, fetch_entry_point, SMCRequest
+from smc.elements.collection import describe_log_server
 
 common_host = None
 test_api = None
 class Test(unittest.TestCase):
        
-    print("Running Search Test..")
     def setUp(self):
-        print("-------Called setup-------")
         session.login(url=url, api_key=api_key, verify=verify)
         Host.create('test-common-api-user', '12.12.12.12')
         Host.create('test-api-user', '12.12.12.12') #used for wildcard searches
     
     def tearDown(self):
-        print("-------Called tear down-------")
         try:
             host = smc.actions.search.element_href_use_filter('test-common-api-user', 'host')
             SMCRequest(href=host).delete()
@@ -239,6 +237,9 @@ class Test(unittest.TestCase):
         filters = session.cache.entry_points
         self.assertIsNotNone(filters)
         
+    def test_entry_points_full(self):
+        self.assertIsInstance(session.cache.get_entry_points(), list)
+        
     def test_get_all_entry_points(self):
         self.assertIsNotNone(session.cache.get_all_entry_points())
     
@@ -252,9 +253,16 @@ class Test(unittest.TestCase):
         a = smc.actions.search.all_entry_points()
         self.assertIsInstance(a, list)
         self.assertIsNotNone(a)
-              
+    
+    def test_element_references(self):
+        for x in describe_log_server():
+            # Dependent on Management Server
+            result = smc.actions.search.element_references(x.href)
+            self.assertTrue(len(result)>0)
+        
+                  
     def util_check_for_href(self, href):
-        self.assertRegexpMatches(href,r'^http|https://', msg='{} does not look like a url reference from valid user'.format(href))
+        self.assertRegexpMatches(href,r'^http|https://')
             
     def verify_attr_success(self, element):
         self.assertIsNotNone(element.etag)
@@ -262,8 +270,6 @@ class Test(unittest.TestCase):
         self.assertIsNone(element.msg)
         
     
-    def verify_attr_fail(self, element):
-        pass
 
 if __name__ == "__main__":
     #import sys;sys.argv = ['', 'Test.testName']

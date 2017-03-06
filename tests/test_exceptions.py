@@ -1,91 +1,98 @@
-'''
-Created on Sep 30, 2016
-
-@author: davidlepage
-'''
+"""
+Test specific exceptions. This will catch SMCOperationFailure in GET request
+and should return the proper SMCResult.
+"""
+import requests_mock
 import unittest
-from constants import url, api_key, verify
-from smc.api.exceptions import SMCOperationFailure
-from smc import session
+from smc.tests.mocks import inject_mock_for_smc
+from smc.tests.constants import url
+from smc.api.exceptions import SMCOperationFailure, ResourceNotFound
+from smc.api.common import SMCRequest
+from smc.base.util import find_type_from_self
 
-class RequestMock(object):
-    def __init__(self, 
-                 text='{"details":["Element name test is already used."],\
-                 "message":"Impossible to store the element test.",\
-                 "status":"0"}',
-                 headers={'content-type': 'application/json'}):
-        self.status_code = 200
-        self.headers = headers
-        self.text = text
-    
-    def __getattr__(self, value):
-        pass
-    
-class Test(unittest.TestCase):
+def raise_smcopfail(request, context):
+    raise SMCOperationFailure
 
-
-    def setUp(self):
-        print("-------Called setup-------")
-        session.login(url=url, api_key=api_key, verify=verify)
+class TestExceptions(unittest.TestCase):
     
-    def tearDown(self):
-        print("-------Called tear down-------")
-        session.logout()
-                   
-    def test_OpFailure_with_no_message_and_json_headers(self):
-        try:
-            raise SMCOperationFailure(RequestMock(text='{}'))
-        except SMCOperationFailure as e:
-            result = e.smcresult
-            self.assertEqual(result.code, 200)
-            self.assertIsNone(result.content)
-            self.assertIsNone(result.json)
-            self.assertIsNone(result.href)
-            self.assertIsNone(result.etag)
-            self.assertIsNone(result.msg)
+    # Test exceptions from smc.api.common layer
+    @classmethod
+    def setUpClass(cls):
+        """ 
+        Set up SMC Session object once per test class. Primary reason is
+        to load the Mock session object as smc.api.session._session since
+        this assumes we will not have a real connection.
+        """
+        super(TestExceptions, cls).setUpClass()
+        inject_mock_for_smc()
+            
+    @requests_mock.mock()
+    def test_smcoperationfailure_nojson(self, m):
+        # Invalid message (headers are json but no json body
+        m.get('/foo', headers={'content-type': 'application/json'},
+              status_code=400)
+        result = SMCRequest(href='{}/foo'.format(url)).read()
+        self.assertEqual(result.code, 400)
+        self.assertTrue(result.msg.startswith('No valid message'))
     
-    def test_non_application_json_reply(self):
-        #Reply as response.text
-        try:
-            raise SMCOperationFailure(RequestMock(headers={'content-type': 'text/plain'},
-                                                  text='blah'))   
-        except SMCOperationFailure as e:
-            self.assertEqual(e.smcresult.msg, 'blah')
+    @requests_mock.mock()
+    def test_smcoperationfailure_json(self, m):
+        m.get('/foo', headers={'content-type': 'application/json'},
+              json={'details': 'some error'}, status_code=400)
+        result = SMCRequest(href='{}/foo'.format(url)).read()
+        self.assertEqual(result.code, 400)
+        self.assertTrue(result.msg.startswith('some error'))
     
-    def test_non_application_json_no_msg(self):
-        #Reply wasnt json or text
-        try:
-            raise SMCOperationFailure(RequestMock(headers={'content-type': 'text/plain'},
-                                                  text=None))
-        except SMCOperationFailure as e:
-            self.assertRegexpMatches(e.smcresult.msg, r'^HTTP error code')
-
-    def test_repr(self):
-        try:
-            raise SMCOperationFailure(RequestMock())
-        except SMCOperationFailure as e:
-            self.assertIsNotNone(repr(e))
-
-    def test_OpFailure_with_message(self):
-        try:
-            raise SMCOperationFailure(RequestMock())
-        except SMCOperationFailure as e:
-            self.assertTrue(e.smcresult.msg.startswith('Impossible to store'))
+    @requests_mock.mock()
+    def test_smcoperationfailure_notjson(self, m):
+        # With message
+        m.get('/foo', [{'text': 'blah blah error', 'status_code': 400},
+                       {'status_code': 400}])
+        
+        # With text output
+        result = SMCRequest(href='{}/foo'.format(url)).read()
+        self.assertEqual(result.code, 400)
+        self.assertTrue(result.msg.startswith('blah blah'))
+        
+        # Only status code
+        result = SMCRequest(href='{}/foo'.format(url)).read()
+        self.assertEqual(result.code, 400)
+        self.assertTrue(result.msg.startswith('No message returned'))
     
-    def test_OpFailure_missing_details(self):
-        try:
-            raise SMCOperationFailure(RequestMock(text='{"message":"Impossible to store the element test.",\
-                "status":"0"}'))
-        except SMCOperationFailure as e:
-            self.assertEqual(e.smcresult.msg, 'Impossible to store the element test.')
+    @requests_mock.mock()    
+    def test_smcoperationfailure_missing_msgparts(self, m):
+        m.get('/foo', [{'json': {'message':'Impossible to store the element test.','status':'0'}, 
+                        'status_code': 400, 'headers': {'content-type': 'application/json'}},
+                       {'json': {'details':['Element name test is already used.'],'status':'0'},
+                        'status_code': 400, 'headers': {'content-type': 'application/json'}}])
+        
+        # Missing detqils key
+        result = SMCRequest(href='{}/foo'.format(url)).read()
+        self.assertEqual(result.code, 400)
+        self.assertTrue(result.msg.startswith('Impossible to store'))
+        
+        # Missing message key
+        result = SMCRequest(href='{}/foo'.format(url)).read()
+        self.assertEqual(result.code, 400)
+        self.assertTrue(result.msg.startswith('Element name test'))
     
-    def test_OpFailure_missing_message(self):
-        try:
-            raise SMCOperationFailure(RequestMock(text='{"details":["Element name test is already used."],\
-                 "status":"0"}'))
-        except SMCOperationFailure as e:
-            self.assertEqual(e.smcresult.msg, 'Element name test is already used.')
-
+    @requests_mock.mock() 
+    def test_validwith_messageanddetails(self, m):
+        m.get('/foo', json={'message':'Impossible to store the element test.',
+                            'details':['Element name test is already used.'],
+                            'status':'0'}, 
+                            status_code=400, headers={'content-type': 'application/json'})
+        
+        # Missing detqils key
+        result = SMCRequest(href='{}/foo'.format(url)).read()
+        self.assertEqual(result.code, 400)
+        self.assertTrue(result.msg.startswith('Impossible to store the element test. Element name '
+                                              'test is already used'))
+    
+    def test_resource_not_found(self):
+        with self.assertRaises(ResourceNotFound):
+            find_type_from_self([])  
+              
 if __name__ == "__main__":
     #import sys;sys.argv = ['', 'Test.testOperationFailure']
     unittest.main()
