@@ -5,7 +5,7 @@ Created on Oct 20, 2016
 '''
 import time
 import unittest
-from .constants import url, api_key, verify,\
+from constants import url, api_key, verify,\
     is_min_required_smc_version
 from smc.administration.system import System
 from smc import session

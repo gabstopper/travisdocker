@@ -4,7 +4,7 @@ Created on Oct 29, 2016
 @author: davidlepage
 '''
 import unittest
-from .constants import url, api_key, verify
+from constants import url, api_key, verify
 from smc import session
 from smc.elements.network import Host
 from smc.routing.ospf import OSPFKeyChain, OSPFInterfaceSetting, OSPFArea,\

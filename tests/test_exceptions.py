@@ -5,7 +5,7 @@ and should return the proper SMCResult.
 import requests_mock
 import unittest
 from smc.tests.mocks import inject_mock_for_smc
-from .constants import url
+from constants import url
 from smc.api.exceptions import SMCOperationFailure, ResourceNotFound
 from smc.api.common import SMCRequest
 from smc.base.util import find_type_from_self

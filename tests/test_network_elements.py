@@ -1,7 +1,7 @@
 import io
 import unittest
 import mock
-from .constants import url, api_key, verify, is_min_required_smc_version
+from constants import url, api_key, verify, is_min_required_smc_version
 from smc.administration.system import System
 from smc import session
 import smc.actions.search as search

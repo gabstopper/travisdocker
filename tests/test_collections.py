@@ -6,7 +6,7 @@ Created on Aug 24, 2016
 
 import unittest
 import inspect
-from .constants import url, api_key, verify
+from constants import url, api_key, verify
 from smc import session
 import smc.elements.collection
 from smc.elements.network import Host

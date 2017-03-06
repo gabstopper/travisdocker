@@ -6,6 +6,7 @@ Created on Nov 13, 2016
 import unittest
 import time
 from smc import session
+from constants import url, api_key, verify
 from smc.base.util import save_to_file
 from smc.core.engine import Engine
 from smc.api.exceptions import LoadEngineFailed, NodeCommandFailed,\
@@ -26,7 +27,7 @@ engine_not_initialized = None
 
 class Test(unittest.TestCase):
     def setUp(self):
-        session.login(url='http://172.18.1.150:8082', api_key='EiGpKD4QxlLJ25dbBEp20001', 
+        session.login(url=url, api_key=api_key, 
                       verify=True)
         try:
             global engine

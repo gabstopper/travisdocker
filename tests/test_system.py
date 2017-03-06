@@ -6,7 +6,7 @@ Created on Feb 20, 2017
 import unittest
 import requests_mock
 from smc import session
-from .constants import url, api_key, verify
+from constants import url, api_key, verify
 from smc.administration.system import System
 from smc.administration.updates import UpdatePackage, EngineUpgrade
 from smc.administration.license import License
