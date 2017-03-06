@@ -1,7 +1,7 @@
 import unittest
 import requests_mock
 from smc import session as mysession
-from .constants import url
+from constants import url
 from smc.elements.network import Alias
 from smc.core.engine import Engine, VirtualResource, InternalGateway,\
     InternalEndpoint
