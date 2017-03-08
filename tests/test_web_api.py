@@ -8,7 +8,7 @@ import unittest
 import logging
 import requests
 import requests_mock
-from smc.tests.mocks import inject_mock_for_smc
+from mocks import inject_mock_for_smc
 from smc import session
 from constants import url
 from smc.api.session import Session
