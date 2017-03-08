@@ -28,7 +28,7 @@ from smc.administration.tasks import TaskMonitor, TaskDownload
 class Test(unittest.TestCase):
 
     def setUp(self):
-        session.login(url=url, api_key=api_key, timeout=120, verify=verify)
+        session.login(url=url, api_key=api_key, timeout=30, verify=verify)
     
     def tearDown(self):
         try:
