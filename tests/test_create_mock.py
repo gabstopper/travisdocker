@@ -5,9 +5,9 @@ from smc.core.engines import Layer3Firewall, Layer2Firewall, IPS, MasterEngine,\
 from smc.core.engine import Engine
 from constants import url
 from smc.api.exceptions import CreateEngineFailed
-from smc.tests.mocks import (mock_location_helper, mock_logical_intf_helper,
-                             mock_zone_helper, mock_search_get_first_log_server,
-                             inject_mock_for_smc)
+from mocks import (mock_location_helper, mock_logical_intf_helper,
+                   mock_zone_helper, mock_search_get_first_log_server,
+                   inject_mock_for_smc)
                             
 def mock_create(m, func, args, uri=None, status_code=200):
     """

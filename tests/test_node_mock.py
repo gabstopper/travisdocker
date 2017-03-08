@@ -4,9 +4,9 @@ import requests_mock
 from smc.api.exceptions import LicenseError, NodeCommandFailed
 from smc.core.node import Node, ApplianceStatus, NodeStatus, Diagnostic,\
     HardwareStatus, InterfaceStatus
-from smc.tests.constants import url
+from constants import url
 from smc.base.model import Meta
-from smc.tests.mocks import inject_mock_for_smc
+from mocks import inject_mock_for_smc
 
 def http304(func):
     """

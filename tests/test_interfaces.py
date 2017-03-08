@@ -22,14 +22,22 @@ class TestInterfaces(unittest.TestCase):
         for i in [smc.core.interfaces]:# smc.core.sub_interfaces]:
             for _, klazz in inspect.getmembers(i, inspect.isclass):
                 if hasattr(klazz, 'typeof'):
-                    rc = next(SubInterface.get_subclasses(klazz.typeof))
+                    rc = SubInterface.get_subinterface(klazz.typeof)
                     if rc:
                         self.assertEqual(rc, klazz)
                     else:    
                         rc = InterfaceFactory(klazz.typeof)
                         self.assertEqual(rc, klazz)
                     
-            
+    def test_SubInterfaceIterator(self):
+        ifmock = [{'node_interface': {'address': '34.34.34.34'}},
+                  {'node_interface': {'address': '35.35.35.35'}}]
+        
+        subif = SubInterface(ifmock)
+        for interface in subif:
+            self.assertIsInstance(interface, NodeInterface)
+        self.assertEqual(len(subif), 2)  
+                
     def test_CviSubInterface(self):
         cvi = ClusterVirtualInterface.create(interface_id=1, 
                                              address='10.0.0.254', 

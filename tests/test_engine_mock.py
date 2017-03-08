@@ -14,9 +14,9 @@ from smc.core.resource import Snapshot
 from smc.core.route import Routing, Antispoofing, Routes
 from smc.core.node import Node
 from smc.vpn.elements import VPNSite
-from smc.tests.mocks import (mock_get_ospf_default_profile, 
-                             mock_search_get_first_log_server, 
-                             inject_mock_for_smc)
+from mocks import (mock_get_ospf_default_profile, 
+                   mock_search_get_first_log_server, 
+                   inject_mock_for_smc)
 
 import logging
 logging.getLogger()
