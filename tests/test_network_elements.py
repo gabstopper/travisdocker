@@ -1,6 +1,7 @@
 import io
 import unittest
 import mock
+import requests
 from constants import url, api_key, verify, is_min_required_smc_version
 from smc.administration.system import System
 from smc import session
@@ -33,7 +34,7 @@ class Test(unittest.TestCase):
     def tearDown(self):
         try:
             session.logout()
-        except SystemExit:
+        except requests.exceptions.ConnectionError:
             pass
     
     def test_type_error_in_common(self):
