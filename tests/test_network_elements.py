@@ -33,8 +33,10 @@ class Test(unittest.TestCase):
     
     def tearDown(self):
         try:
-            session.logout()
+            session.logout() 
         except requests.exceptions.ConnectionError:
+            # This is broken, seems to happen when dealing with IPList.zip 
+            # saved to file. Might be header related
             pass
     
     def test_type_error_in_common(self):
