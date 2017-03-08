@@ -1,11 +1,11 @@
 [run]
 omit = 
-	__init__.py
-	smc/base/mixins.py
-	smc/actions/locators.py
-	smc/actions/parser.py
-	smc/actions/test.py
-	smc/actions/shortcuts.py
+        __init__.py
+        smc/api/counter.py
+        smc/actions/locators.py
+        smc/actions/parser.py
+        smc/actions/test.py
+        smc/actions/shortcuts.py
 
 [report]
 # Regexes for lines to exclude from consideration
@@ -13,5 +13,8 @@ exclude_lines =
 
     # Don't complain about missing debug-only code:
     def __repr__
+    def __str__
+    __str__
     pass
-	
+    raise NotImplementedError
+    except ImportError
