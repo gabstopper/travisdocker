@@ -6,6 +6,7 @@ omit =
         *parser.py*
         *test.py*
         *shortcuts.py*
+        *docker_smc_bootstrap.py*
 
 [report]
 # Regexes for lines to exclude from consideration
