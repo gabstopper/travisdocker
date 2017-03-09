@@ -19,3 +19,4 @@ exclude_lines =
     pass
     raise NotImplementedError
     except ImportError
+    if compat.PY3
