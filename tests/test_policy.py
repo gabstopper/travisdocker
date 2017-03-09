@@ -17,6 +17,7 @@ from smc.policy.rule import IPv4Rule, IPv4Layer2Rule, EthernetRule
 from smc.policy.rule_nat import IPv4NATRule
 from smc.vpn.policy import VPNPolicy
 from smc.policy.layer2 import Layer2Policy, Layer2TemplatePolicy
+from smc.policy.policy import InspectionPolicy
 from smc.api.common import SMCRequest
 from smc.elements.other import LogicalInterface
 from smc.policy.ips import IPSPolicy, IPSTemplatePolicy
