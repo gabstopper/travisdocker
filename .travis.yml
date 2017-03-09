@@ -3,6 +3,8 @@ sudo: false
 language: python
 python:
   - "2.7"
+  - "3.4"
+  - "3.5"
 
 services:
   - docker
@@ -22,4 +24,6 @@ script:
 - nosetests --exe --with-coverage --cover-package=smc --cover-html -v
 
 after_success:
-  coveralls
+  - if [[ $ENV == python=2.7* ]]; then
+          coveralls;
+    fi
