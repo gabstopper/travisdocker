@@ -134,6 +134,9 @@ class Test(unittest.TestCase):
         policy = FirewallPolicy.create(name='myfoopolicy', template='Firewall Inspection Template')
         self.assertIsInstance(policy, FirewallPolicy)
         
+        self.assertIsInstance(policy.template, FirewallTemplatePolicy)
+        self.assertIsInstance(policy.inspection_policy, InspectionPolicy)
+        
         policy.fw_ipv4_access_rules.create(name='myrule', sources='any', action='somebadvalue')
         
         for rule in policy.fw_ipv4_access_rules.all():
@@ -554,8 +557,7 @@ class Test(unittest.TestCase):
             policy.delete()
         except DeleteElementFailed:
             pass
-        
-        
+            
     def test_file_filtering_policy(self):
         # Not fully implemented
         policy = describe_file_filtering_policy()

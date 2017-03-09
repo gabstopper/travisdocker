@@ -103,5 +103,21 @@ class Test(unittest.TestCase):
         element = Host('绝对路径加载/相对路径加载都')
         self.assertTrue(element.name == u'绝对路径加载/相对路径加载都')
         
+    def test_util_bytes_to_unicode(self):
+        if PY3:
+            result = bytes_to_unicode(b'teststring')
+            self.assertIsInstance(result, str)
+        else:
+            result = bytes_to_unicode('teststring')
+            self.assertIsInstance(result, unicode)  # @UndefinedVariable
+    
+    def test_util_unicode_to_bytes(self):
+        if PY3:
+            result = unicode_to_bytes('teststring')
+            self.assertIsInstance(result, str)
+        else:
+            result = unicode_to_bytes(u'teststring')
+            self.assertIsInstance(result, str)
+        
 if __name__ == "__main__":
     unittest.main()
