@@ -17,7 +17,6 @@ from smc.policy.rule import IPv4Rule, IPv4Layer2Rule, EthernetRule
 from smc.policy.rule_nat import IPv4NATRule
 from smc.vpn.policy import VPNPolicy
 from smc.policy.layer2 import Layer2Policy, Layer2TemplatePolicy
-from smc.policy.policy import InspectionPolicy
 from smc.api.common import SMCRequest
 from smc.elements.other import LogicalInterface
 from smc.policy.ips import IPSPolicy, IPSTemplatePolicy
@@ -29,6 +28,8 @@ from smc.policy.file_filtering import FileFilteringRule
 from smc.policy.rule_elements import AuthenticationOptions, LogOptions
 from smc.elements.network import Host
 from smc.base.model import Element
+from smc.policy.policy import InspectionPolicy
+
 
 class Test(unittest.TestCase):
 
@@ -542,18 +543,12 @@ class Test(unittest.TestCase):
                 self.assertIsNone(result)
         
         status = task_status(task)
-        for _ in range(1, 5):
-            if status.in_progress:
-                print("Status still in progress: %s" % vars(status))
-                self.assertIn(status.abort().code, [204, 400])
-            else:
-                print("Status no progress: %s" % vars(status))
-                break
-            
+        self.assertIsNotNone(status.in_progress)
+        self.assertIsNone(tasks.foo) #Invalid task attribute
+        
         engine.delete()
-        # Try except required becuase SMC seems to have a timing issue where it will hold on
-        # to a reference to the task even after it's aborted. When deleting the policy, the
-        # SMC will complain that it has dependencies
+        # Try except required for SMC <6.2.1. BUG filed where abort timing will
+        # fail on uninitialized engine after policy push
         try:
             policy.delete()
         except DeleteElementFailed:
