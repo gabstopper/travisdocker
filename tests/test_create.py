@@ -213,6 +213,17 @@ class Test(unittest.TestCase):
         result = engine.attr_by_name('scan_detection')
         self.assertEqual(result.get('scan_detection_icmp_events'), 250)
         
+        # Refresh policy, fails as engine not ready
+        self.assertRaises(TaskRunFailed, lambda: engine.refresh())
+        
+        # Upload, policy doesn't exist
+        self.assertRaises(TaskRunFailed, lambda: engine.upload(policy='foo'))
+        
+        # Generate snapshot #TODO: Bug in SMC API
+        with self.assertRaises(EngineCommandFailed):
+            engine.generate_snapshot()
+        
+        
         for _ in engine.export(filename='export.zip', wait_for_finish=True):
             pass
         
