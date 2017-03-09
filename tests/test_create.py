@@ -18,6 +18,8 @@ from smc.core.interfaces import PhysicalInterface,\
     PhysicalVlanInterface, TunnelInterface
 from smc.core.sub_interfaces import SingleNodeInterface, CaptureInterface,\
     InlineInterface
+from smc.core.route import Antispoofing
+from smc.vpn.elements import VPNCertificate
 
 class Test(unittest.TestCase):
     
