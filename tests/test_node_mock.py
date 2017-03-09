@@ -6,6 +6,7 @@ from smc.core.node import Node, ApplianceStatus, NodeStatus, Diagnostic,\
     HardwareStatus, InterfaceStatus
 from constants import url
 from smc.base.model import Meta
+from smc.base.util import save_to_file
 from mocks import inject_mock_for_smc
 
 def http304(func):
@@ -352,3 +353,12 @@ class NodeTests(unittest.TestCase):
         diag = Diagnostic({'enabled': True, 'name': 'SNMP Monitoring'})
         self.assertIsNone(self.node.send_diagnostic([diag]))
         self.assertRaises(NodeCommandFailed, lambda: self.node.send_diagnostic([]))
+        
+    # Node uses this util if saving initial contact to file
+    def test_save_to_file(self, m):
+        # Valid
+        self.assertIsNone(save_to_file('blah', 'foo'))
+        
+    def test_save_to_bad_file(self, m):
+        # Invalid file
+        self.assertRaises(IOError, lambda: save_to_file('foo/efwef/', 'foo'))

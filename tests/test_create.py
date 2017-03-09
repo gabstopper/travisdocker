@@ -101,7 +101,7 @@ class Test(unittest.TestCase):
                     self.assertEqual(sub_intf.network_value, '2001:db8:85a3::/64')
                     
         # Test getting interfaces
-        # Non-existant
+        # Doesn't exist
         self.assertRaises(EngineCommandFailed, lambda: engine.physical_interface.get(10))
         # Existing
         intf = engine.physical_interface.get(0)
@@ -109,6 +109,7 @@ class Test(unittest.TestCase):
         zone = zone_helper('Zoner')
         intf.zone_ref = zone
         self.assertIsNone(intf.save())
+        self.assertEqual(intf.zone_ref, zone)
         
         # Force refresh of cache after save. This will trigger the
         # HTTP 304 meaning the server side changed before cache was refreshed
@@ -121,6 +122,7 @@ class Test(unittest.TestCase):
                                                             address='10.10.10.10', 
                                                             network_value='10.10.10.0/24')
         intf = engine.physical_interface.get(10)
+        self.assertIsInstance(repr(intf), str) #SubElement __repr__ through UnicodeMixin
         self.assertIsInstance(intf, PhysicalInterface)
         self.assertTrue(intf.has_interfaces)
         self.assertIsNone(intf.delete())
@@ -145,9 +147,76 @@ class Test(unittest.TestCase):
                                                                       network_value='21.21.21.0/24',
                                                                       vlan_id=20)
         
+        # Add Tunnel interfaces
+        engine.tunnel_interface.add_single_node_interface(tunnel_id=1000, 
+                                                          address='100.100.100.100', 
+                                                          network_value='100.100.100.0/24')
+        # Add another IP to this Tunnel
+        engine.tunnel_interface.add_single_node_interface(tunnel_id=1000, 
+                                                          address='110.110.110.110', 
+                                                          network_value='110.110.110.0/24')
+        
+        
+        # Get aliases
+        aliases = engine.alias_resolving()
+        for alias in aliases:
+            self.assertIsInstance(alias, Alias)
+            self.assertIsNotNone(alias.name)
+            self.assertTrue(alias.href.startswith('http'))
+            self.assertIsInstance(alias.resolved_value, list)
+           
+        #Resolve the IP address alias for this engine
+        alias = Alias('$$ Interface ID 0.ip')
+        self.assertIn('1.1.1.1', alias.resolve('myfw'))
+        
+        #Antispoofing
+        Network.create(name='network-10.1.2.0/24', ipv4_network='10.1.2.0/24')
+        spoofing = engine.antispoofing
+        self.assertIsInstance(spoofing, Antispoofing)
+        for entry in engine.antispoofing.all(): 
+            if entry.name == 'Interface 0':
+                self.assertEqual(entry.level, 'interface')
+                self.assertEqual(entry.validity, 'enable')
+                entry.add(Network('network-10.1.2.0/24'))
+        
+        #Look for our network
+        for entry in engine.antispoofing.all():
+            if entry.name == 'Interface 0':
+                for network in entry.all():
+                    if network.name == 'network-10.1.2.0/24':
+                        self.assertEqual(network.ip, '10.1.2.0/24')
+        
+        # Test renaming NGFW               
+        engine.rename('smc-python')
+        
+        self.assertEqual(engine.name, 'smc-python')
+        for node in engine.nodes:
+            self.assertTrue(node.name.startswith('smc-python'))
+        self.assertTrue(engine.internal_gateway.name.startswith('smc-python'))
+        
+        # Gen certificate for internal gateway, fail because engine can't gen cert when uninitialized
+        v = VPNCertificate('myorg', 'foo.org')
+        self.assertRaises(CertificateError, lambda: engine.internal_gateway.generate_certificate(v))
+        
+        #Modify an attribute on engine using lower level modify_attribute
+        #Requires key value. Replaces full nested dict in this case.
+        response = engine.modify_attribute(scan_detection={'scan_detection_icmp_events': 250,
+                                                           'scan_detection_icmp_timewindow': 1,
+                                                           'scan_detection_tcp_events': 220,
+                                                           'scan_detection_tcp_timewindow': 1,
+                                                           'scan_detection_type': 'default off',
+                                                           'scan_detection_udp_events': 220,
+                                                           'scan_detection_udp_timewindow': 1})
+        self.assertIsNone(response)
+        result = engine.attr_by_name('scan_detection')
+        self.assertEqual(result.get('scan_detection_icmp_events'), 250)
+        
+        for _ in engine.export(filename='export.zip', wait_for_finish=True):
+            pass
+        
         engine.delete()
-    
-        # Adding an ip to an existing interface requires this to occur through an engine
+        Network('network-10.1.2.0/24').delete()
+        # Adding an IP to an existing interface requires this to occur through an engine
         # reference as we first need to successfully retrieve the interface
         physical = PhysicalInterface()
         with self.assertRaises(EngineCommandFailed):

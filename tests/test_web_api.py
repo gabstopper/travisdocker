@@ -15,6 +15,8 @@ from smc.api.session import Session
 from smc.api.web import SMCAPIConnection, SMCResult
 from smc.api.web import SMCConnectionError
 from smc.api.common import SMCRequest
+from smc.api.exceptions import ActionCommandFailed
+from smc.base.model import prepared_request
 
 def raise_connection_error(request, context):
     raise requests.exceptions.RequestException
@@ -92,7 +94,13 @@ class WebApiTest(unittest.TestCase):
               status_code=200)
         result = SMCRequest(href='{}/foo'.format(url)).read()
         self.assertIsNone(result.content)
-        
+    
+    def test_filedownload_catches_exception(self):
+        with self.assertRaises(ActionCommandFailed):
+            prepared_request(ActionCommandFailed,
+                             href='{}/'.format(url),
+                             filename='blah').read()
+                                 
     def test_stream_logging(self):
         from smc import set_stream_logger
         set_stream_logger()
