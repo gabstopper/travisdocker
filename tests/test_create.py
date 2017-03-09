@@ -12,7 +12,7 @@ from smc.core.engines import Layer2Firewall, Layer3Firewall, IPS, FirewallCluste
     MasterEngine, Engine, Layer3VirtualEngine, MasterEngineCluster
 from smc.api.exceptions import LoadEngineFailed, CreateEngineFailed,\
     EngineCommandFailed, DeleteElementFailed
-from smc.elements.network import Host
+from smc.elements.network import Host, Alias, Network
 from smc.elements.other import ContactAddress
 from smc.core.interfaces import PhysicalInterface,\
     PhysicalVlanInterface, TunnelInterface
