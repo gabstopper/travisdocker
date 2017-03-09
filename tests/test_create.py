@@ -11,7 +11,7 @@ from smc.elements.helpers import zone_helper, logical_intf_helper,\
 from smc.core.engines import Layer2Firewall, Layer3Firewall, IPS, FirewallCluster,\
     MasterEngine, Engine, Layer3VirtualEngine, MasterEngineCluster
 from smc.api.exceptions import LoadEngineFailed, CreateEngineFailed,\
-    EngineCommandFailed, DeleteElementFailed, CertificateError
+    EngineCommandFailed, DeleteElementFailed, CertificateError, TaskRunFailed
 from smc.elements.network import Host, Alias, Network
 from smc.elements.other import ContactAddress
 from smc.core.interfaces import PhysicalInterface,\
