@@ -14,8 +14,8 @@ before_install:
 - docker pull dwlepage70/smc:v6.1.2
 - docker network create --subnet=172.32.0.0/24 mynet
 - docker run -d -p 8902-8918:8902-8918 -p 8082:8082 --network=mynet --ip=172.32.0.10 --name smc_container dwlepage70/smc:v6.1.2
-- docker exec smc_container /bin/bash -c "/etc/init.d/sgMgtServer start"
-- docker exec smc_container /bin/bash -c "/etc/init.d/sgLogServer start"
+- docker exec smc_container /bin/sh -c "/etc/init.d/sgMgtServer start"
+- docker exec smc_container /bin/sh -c "/etc/init.d/sgLogServer start"
 - pip install coverage
 - pip install coveralls
 - pip install requests-mock
@@ -25,5 +25,5 @@ script:
 
 after_success:
   - if [[ $ENV == python=2.7* ]]; then
-          coveralls debug;
+          coveralls;
     fi
