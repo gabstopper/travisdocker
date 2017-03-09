@@ -5,7 +5,7 @@ Created on Feb 6, 2017
 '''
 import unittest
 from smc.policy.rule_elements import LogOptions, Action, AuthenticationOptions,\
-    Service, Destination, Source
+    Service, Destination, Source, TimeRange
 from smc.policy.rule_nat import DynamicSourceNAT, StaticSourceNAT, StaticDestNAT
 from smc.elements.network import Host
 from smc.base.model import Meta
@@ -144,6 +144,26 @@ class Test(unittest.TestCase):
         o = dest()
         self.assertIsNotNone(o.get('destinations'))
     
+    def test_time_range(self):
+        tr = {'time_range': {'day_ranges': [{'begin_day_week': 'mo',
+                                             'begin_hour': 0,
+                                             'begin_minute': 0,
+                                             'end_day_week': 'su',
+                                             'last_hour': 23,
+                                             'last_minute': 57,
+                                             'name': '<Unknown>'}],
+                             'month_range_end': 'dec',
+                             'month_range_start': 'jan'}}
+        time_range = TimeRange(tr.get('time_range'))
+
+        self.assertEqual(time_range.month_range_end, 'dec')
+        time_range.month_range_end = 'sep'
+        self.assertEqual(time_range.month_range_end, 'sep')
+        self.assertEqual(time_range.month_range_start, 'jan')
+        time_range.month_range_start = 'feb'
+        self.assertEqual(time_range.month_range_start, 'feb')
+        
+        
     def test_dynamic_source_nat(self):
         
         options = LogOptions()
