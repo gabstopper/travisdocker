@@ -25,5 +25,5 @@ script:
 
 after_success:
   - if [[ $ENV == python=2.7* ]]; then
-          coveralls;
+          coveralls debug;
     fi
