@@ -8,7 +8,7 @@ import smc.actions.search
 from smc.elements.network import Host
 from smc.elements.collection import describe_host, describe_single_fw
 from smc.core.engines import Layer3Firewall
-from smc.base.util import bytes_to_unicode
+from smc.base.util import bytes_to_unicode, unicode_to_bytes
 from smc.compat import PY3
 from smc.api.exceptions import ElementNotFound, CreateElementFailed
 
