@@ -2,10 +2,12 @@ import requests
 import requests_mock
 from smc import session as mysession
 from smc.api.web import SMCAPIConnection
-from constants import url
+from .constants import url
 from smc.elements.helpers import location_helper, logical_intf_helper,\
     zone_helper
-from smc.actions import search
+from smc.elements.servers import LogServer
+from smc.api.session import _EntryPoint
+
 
 def inject_mock_for_smc():
     """
@@ -16,67 +18,58 @@ def inject_mock_for_smc():
     session = requests.Session()
     session.mount('mock', adapter)
     mysession._session = session
-    mysession._cache.api_entry = mock_entry_point()
+    mysession._entry_points = _EntryPoint(mock_entry_point())
     mysession._connection = SMCAPIConnection(mysession)
     return mysession
-    
-def mock_entry_point():
-        """
-        Entry points are used by create methods to either retrieve a resource,
-        such as log server reference, locations, etc, or to POST data to the
-        proper entry point. Populate session cache with needed links.
-        """
-        return [{'rel': 'location', 
-                 'href': '{}/location'.format(url), 
-                 'method': 'GET'},
-                {'rel': 'logical_interface',
-                 'href': '{}/logical_interface'.format(url),
-                 'method': 'GET'},
-                {'rel': 'interface_zone',
-                 'href': '{}/interface_zone'.format(url),
-                 'method': 'GET'},
-                {'rel': 'log_server',
-                 'href': '{}/log_server'.format(url),
-                 'method': 'GET'},
-                {'rel': 'elements', 
-                 'href': '{}/elements'.format(url), 
-                 'method': 'GET'},
-                {'rel': 'single_fw', 
-                 'href': '{}/single_fw'.format(url), 
-                 'method': 'GET'},
-                {'rel': 'single_layer2',
-                 'href': '{}/single_layer2'.format(url),
-                 'method': 'GET'},
-                {'rel': 'single_ips',
-                 'href': '{}/single_ips'.format(url),
-                 'method': 'GET'},
-                {'rel': 'master_engine',
-                 'href': '{}/master_engine'.format(url),
-                 'method': 'GET'},
-                {'rel': 'fw_cluster',
-                 'href': '{}/fw_cluster'.format(url),
-                 'method': 'GET'},
-                {'rel': 'virtual_fw',
-                 'href': '{}/virtual_fw'.format(url),
-                 'method': 'GET'},
-                {'rel': 'ospfv2_profile',
-                 'href': '{}/ospfv2_profile'.format(url),
-                 'method': 'GET'}]
 
-def register_request(m, uri, 
+
+def mock_entry_point():
+    """
+    Entry points are used by create methods to either retrieve a resource,
+    such as log server reference, locations, etc, or to POST data to the
+    proper entry point. Populate session cache with needed links.
+    """
+    return [{'rel': 'location',
+             'href': '{}/location'.format(url)},
+            {'rel': 'logical_interface',
+             'href': '{}/logical_interface'.format(url)},
+            {'rel': 'interface_zone',
+             'href': '{}/interface_zone'.format(url)},
+            {'rel': 'log_server',
+             'href': '{}/log_server'.format(url)},
+            {'rel': 'elements',
+             'href': '{}/elements'.format(url)},
+            {'rel': 'single_fw',
+             'href': '{}/single_fw'.format(url)},
+            {'rel': 'single_layer2',
+             'href': '{}/single_layer2'.format(url)},
+            {'rel': 'single_ips',
+             'href': '{}/single_ips'.format(url)},
+            {'rel': 'master_engine',
+             'href': '{}/master_engine'.format(url)},
+            {'rel': 'fw_cluster',
+             'href': '{}/fw_cluster'.format(url)},
+            {'rel': 'virtual_fw',
+             'href': '{}/virtual_fw'.format(url)},
+            {'rel': 'ospfv2_profile',
+             'href': '{}/ospfv2_profile'.format(url)}]
+
+
+def register_request(m, uri,
                      status_code=200,
-                     json=None, 
+                     json=None,
                      method='GET',
                      headers={'content-type': 'application/json'}):
     """
     Wrapper for mocker calls
     """
     json = {} if json is None else json
-    
+
     m.register_uri(method, '{}'.format(uri),
                    json=json,
                    status_code=status_code,
                    headers=headers)
+
 
 def mock_location_helper(m, location):
     """
@@ -86,14 +79,17 @@ def mock_location_helper(m, location):
     register_request(m, '/elements?filter_context=location',
                      json={'result': [{'href': '{}/location/1'.format(url),
                                        'name': location,
-                                       'type':'location'}]})
-    #m.get('/elements?filter_context=location',
-    #      headers={'content-type': 'application/json'},
-    #      json={'result': [{'href': '{}/location/1'.format(url),
-    #                                   'name': location,
-    #                                   'type':'location'}]})
     
+                                       'type': 'location'}]})
+    
+    register_request(m, '/location',
+                     json={'result': [{'href': '{}/location/1'.format(url),
+                                       'name': location,
+    
+                                       'type': 'location'}]})
+
     return location_helper(location)
+
 
 def mock_zone_helper(m, zone):
     """
@@ -103,10 +99,11 @@ def mock_zone_helper(m, zone):
     m.get('/elements?filter_context=interface_zone',
           headers={'content-type': 'application/json'},
           json={'result': [{'href': '{}/interface_zone/1'.format(url),
-                                       'name': zone,
-                                       'type':'interface_zone'}]})
-    
+                            'name': zone,
+                            'type': 'interface_zone'}]})
+
     return zone_helper(zone)
+
 
 def mock_logical_intf_helper(m, logical_if):
     """
@@ -116,10 +113,11 @@ def mock_logical_intf_helper(m, logical_if):
     m.get('/elements?filter_context=logical_interface',
           headers={'content-type': 'application/json'},
           json={'result': [{'href': '{}/logical_interface/1'.format(url),
-                                       'name': logical_if,
-                                       'type':'logical_interface'}]})
-    
+                            'name': logical_if,
+                            'type': 'logical_interface'}]})
+
     return logical_intf_helper(logical_if)
+
 
 def mock_search_get_first_log_server(m):
     """
@@ -127,19 +125,20 @@ def mock_search_get_first_log_server(m):
     the smc.actions.get_first_log_server() method will be run within
     smc.core.engine.Engine.create to find the default log server href
     """
-    m.get('/log_server', headers={'content-type': 'application/json'},
-          json={'result':[{'href':'{}/log_server/1'.format(url),
-                           'name':'LogServer 1.1.1.1',
-                           'type':'log_server'}]})
-    
-    return search.get_first_log_server()
+    m.get('/elements?filter_context=log_server', headers={'content-type': 'application/json'},
+          json={'result': [{'href': '{}/log_server/1'.format(url),
+                            'name': 'LogServer 1.1.1.1',
+                            'type': 'log_server'}]})
+
+    return LogServer.objects.limit(1)  # @UndefinedVariable
+
 
 def mock_get_ospf_default_profile(m):
     m.get('/ospfv2_profile',
-          json=[{'name': 'Default OSPFv2 Profile', 
-                 'href': '{}/ospf'.format(url), 
+          json=[{'name': 'Default OSPFv2 Profile',
+                 'href': '{}/ospf'.format(url),
                  'type': 'ospfv2_profile'}],
           headers={'content-type': 'application/json'})
-    
+
     m.get('/ospf', json={'system': True, 'href': url},
           headers={'content-type': 'application/json'})

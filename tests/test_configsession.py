@@ -429,6 +429,7 @@ class TestSessionApi(unittest.TestCase):
         self.assertEqual(session.timeout, 200)
         self.assertEqual(session.url, url)
         self.assertEqual(session.api_key, api_key)
+        self.assertEqual(session.web_socket_url, 'ws://172.18.1.26:8082/6.2')
         
     def test_login_refresh(self):
         import os
